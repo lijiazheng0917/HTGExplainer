@@ -17,7 +17,7 @@ np.random.seed(0)
 torch.manual_seed(0)
 torch.cuda.manual_seed(0)
 torch.cuda.manual_seed_all(0)
-from model.myPGExplainer_mag3 import PGExplainer
+from model.myPGExplainer_mag import PGExplainer
 
 glist, label_dict = load_graphs('data/ogbn_graphs.bin')
 device = torch.device('cuda')
@@ -34,6 +34,6 @@ model = nn.Sequential(htgnn, predictor).to(device)
 model.load_state_dict(torch.load('/home/jiazhengli/xdgnn/HTGNN/output/OGBN-MAG/checkpoint_HTGNN_0.pt'))
 
 
-task = 'node'
-explainer = PGExplainer(model_to_explain = model, G = train_feats[0], G_label = train_labels[0],  G2 = test_feats[0], G2_label = test_labels[0], task = task, time_win = time_window)
+explainer = PGExplainer(model_to_explain = model, G_train = train_feats, G_train_label = train_labels, 
+                        G_val = val_feats, G_val_label = val_labels, G_test = test_feats, G_test_label = test_labels, time_win = time_window)
 explainer.prepare()

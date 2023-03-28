@@ -35,5 +35,6 @@ model.load_state_dict(torch.load('/home/jiazhengli/xdgnn/HTGNN/output/COVID19/ch
 
 time_window = 7
 task = 'node'
-explainer = PGExplainer(model_to_explain = model, G = train_feats[0], G2 = test_feats[1], task = task, time_win = time_window)
+# explainer = PGExplainer(model_to_explain = model, G = train_feats[0], G2 = test_feats[1], task = task, time_win = time_window)
+explainer = PGExplainer(model_to_explain = model, G_train = train_feats, G_val = val_feats, G_test = test_feats, time_win = time_window)
 explainer.prepare()

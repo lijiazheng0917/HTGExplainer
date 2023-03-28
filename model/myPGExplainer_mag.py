@@ -1,27 +1,20 @@
 import torch
-import torch_geometric as ptgeom
 from torch import nn
 from torch.optim import Adam
-from torch_geometric.data import Data
 from tqdm import tqdm
 import dgl
 import torch.nn.functional as F
-from dgl.data.utils import load_graphs
-from utils.data import load_COVID_data
 import numpy as np
 from sklearn.metrics import roc_auc_score, average_precision_score, accuracy_score, f1_score
+import random
+from random import sample
+from utils.pytorchtools import EarlyStopping
 
 from torch.utils.tensorboard import SummaryWriter 
-writer = SummaryWriter('/home/jiazhengli/xdgnn/HTGNN/output/mag')
-# writer.add_scalar('loss/loss1', loss1, epoch)
+writer = SummaryWriter('/home/jiazhengli/xdgnn/HTGNN/output/mag_baselines')
 
-import sys
-sys.path.append("/home/jiazhengli/xdgnn/RE-ParameterizedExplainerForGraphNeuralNetworks") 
 
-from model.BaseExplainer import BaseExplainer
-# from ExplanationEvaluation.utils.graph import index_edge
-
-class PGExplainer(BaseExplainer):
+class PGExplainer():
     """
     A class encaptulating the PGExplainer (https://arxiv.org/abs/2011.04573).
     
@@ -41,16 +34,18 @@ class PGExplainer(BaseExplainer):
     :function train: train the explainer
     :function explain: search for the subgraph which contributes most to the clasification decision of the model-to-be-explained.
     """
-    def __init__(self, model_to_explain, G, G_label, G2, task, time_win, epochs=100, lr=0.005, temp=(5.0, 2.0), reg_coefs=(0.0002, 1),sample_bias=0):
+    def __init__(self, model_to_explain, G_train, G_train_label, G_val, G_val_label, G_test, G_test_label, time_win, epochs=100, lr=0.005, temp=(5.0, 2.0), reg_coefs=(0.0002, 1),sample_bias=0):
         super().__init__()
 
         self.model_to_explain = model_to_explain
         self.model_to_explain.eval()
-        self.G = G
-        self.G_label = G_label
-        self.G2 = G2
+        self.G_train = G_train
+        self.G_train_label = G_train_label
+        self.G_val = G_val
+        self.G_val_label = G_val_label
+        self.G_test = G_test
+        self.G_test_label = G_test_label
         self.tw = time_win
-        self.type = task
         self.epochs = epochs
         self.lr = lr
         self.temp = temp
@@ -58,10 +53,7 @@ class PGExplainer(BaseExplainer):
         self.sample_bias = sample_bias
         self.node_emb = 8
 
-        if self.type == "graph":
-            self.expl_embedding = self.node_emb * 2
-        else:
-            self.expl_embedding = 32+32+32+8+7
+        self.expl_embedding = 32+32+32+32+8+7
 
     def create_1d_absolute_sin_cos_embedding(self, pos_len, dim):
         assert dim % 2 == 0, "wrong dimension!"
@@ -85,7 +77,7 @@ class PGExplainer(BaseExplainer):
         return position_emb
 
 
-    def _create_explainer_input(self, sg, inverse_indices, embed, node_id):
+    def _create_explainer_input(self, sg, embed, node1, node2):
         """
         Given the embeddign of the sample by the model that we wish to explain, this method construct the input to the mlp explainer model.
         Depending on if the task is to explain a graph or a sample, this is done by either concatenating two or three embeddings.
@@ -107,7 +99,8 @@ class PGExplainer(BaseExplainer):
             new_dst = sg.ndata[dgl.NID][dsttype][dst.long()]
             srcemb = embed[srctype][new_src.long()] # edge num, embsize
             dstemb = embed[dsttype][new_dst.long()]
-            nemb = embed['author'][node_id].repeat(len(src), 1)
+            nemb1 = embed['author'][node1].repeat(len(src), 1)
+            nemb2 = embed['author'][node2].repeat(len(src), 1)
             posemb = pos_emb[int(etype[-1])].repeat(len(src), 1).to('cuda')
             hetemb = het[srctype+dsttype].repeat(len(src), 1).to('cuda')
 
@@ -115,12 +108,13 @@ class PGExplainer(BaseExplainer):
             dstemb = F.normalize(dstemb,dim=1)
             posemb = F.normalize(posemb,dim=1)
             hetemb = F.normalize(hetemb.float(),dim=1)
-            nemb = F.normalize(nemb,dim=1)
+            nemb1 = F.normalize(nemb1,dim=1)
+            nemb2 = F.normalize(nemb2,dim=1)
 
             # with none
-            # eemb = torch.cat([srcemb,dstemb,nemb],dim=1)
+            # eemb = torch.cat([srcemb,dstemb,nemb1,nemb2],dim=1)
             # with all
-            eemb = torch.cat([srcemb,dstemb,posemb,hetemb,nemb],dim=1)
+            eemb = torch.cat([srcemb,dstemb,posemb,hetemb,nemb1,nemb2],dim=1)
 
             allemb = torch.cat([allemb,eemb],dim=0)
 
@@ -165,10 +159,7 @@ class PGExplainer(BaseExplainer):
         mask_ent_loss = entropy_reg * torch.mean(mask_ent_reg)
 
         # Explanation loss
-        # cce_loss = F.l1_loss(masked_pred, original_pred)
-        # print('1',cce_loss)
-        # print(size_loss)
-        # print(mask_ent_loss)
+
         cce_loss = F.binary_cross_entropy_with_logits(masked_pred,target)
 
         return cce_loss + mask_ent_loss + size_loss, cce_loss, mask_ent_loss, size_loss
@@ -200,23 +191,75 @@ class PGExplainer(BaseExplainer):
             dst = l[top_idx[i].item()][3]
             masked_sg.add_edges(src,dst,etype=type)
 
-        # for i in range(len(least80_idx)):
-        #     type = l[least80_idx[i].item()][0]
-        #     id = l[least80_idx[i].item()][1]
-        #     # print(id)
-        #     # lis = masked_sg.edges(form='eid',etype=type)
-        #     # print(masked_sg.edata[dgl.EID])
-        #     # print(id)
-                  
-        #     # torch.where(masked_sg.edata[dgl.EID] == id)
-        #     # new_id = lis[torch.where(masked_sg.edata[dgl.EID] == id)]
-        #     masked_sg = dgl.remove_edges(masked_sg,eids=id,etype=type,store_ids=True)
-        #     # c[type] += 1
-        #     # sg.remove_edges(id, )
-        # # for srctype, etype, dsttype in sg.canonical_etypes:
         return masked_sg
+    
+    def _mask_graph_new(self, mask, rate):
+        
+        new_mask = torch.zeros(mask.shape[0]).to('cuda')
+        _, idx = torch.sort(mask,descending=True)
 
-    def prepare(self, indices=None):
+        top_idx = idx[:int(rate*len(idx))]
+        new_mask[top_idx]=1
+
+        return new_mask
+
+    def evaluate(self, explainer_model, G_val, G_val_label, t):
+        explainer_model.eval()
+        loss = 0
+        for i in range(len(G_val)):
+            embed = {}
+            for ntype in G_val[i].ntypes:
+                embed[ntype] = self.model_to_explain[0](G_val[i].to('cuda'), ntype).detach()
+
+            org_feat2 = self.model_to_explain[0](self.G_val[i].to('cuda'),'author')
+            pos_label2, neg_label2 = G_val_label[i][0].to('cuda'), G_val_label[i][1].to('cuda')
+            pos_score2 = self.model_to_explain[1](pos_label2, org_feat2)
+            neg_score2 = self.model_to_explain[1](neg_label2, org_feat2)
+            ori_pred2 = torch.cat((pos_score2.squeeze(1), neg_score2.squeeze(1)))
+            target2 = torch.sigmoid(ori_pred2).detach()
+
+            num_edges = G_val_label[i][0].num_edges()
+            edge_list = list(range(num_edges))
+            # how many edges to test?
+            edge_list = sample(edge_list, 1000)
+                
+            for n in edge_list:
+                n = int(n)
+
+                flag = random.choice([0,1])
+                src, dst = G_val_label[i][flag].edges()[0][n], G_val_label[i][flag].edges()[1][n]
+
+                sg, _ = dgl.khop_in_subgraph(G_val[i], {'author': (src,dst)}, k=2, store_ids=True)
+
+                input_expl = self._create_explainer_input(sg, embed, src, dst).unsqueeze(0).to('cuda')
+
+                sampling_weights = self.explainer_model(input_expl)
+
+                mask = self._sample_graph(sampling_weights, t, bias=self.sample_bias).squeeze().to('cuda')
+
+                h_m = self.model_to_explain[0](sg.to('cuda'),'author',edge_weight=mask)
+
+                src_h = h_m[torch.where(sg.ndata[dgl.NID]['author'] == src)]
+                dst_h = h_m[torch.where(sg.ndata[dgl.NID]['author'] == dst)]
+
+                all_h = torch.cat((src_h, dst_h),dim=1).to('cuda')
+                pred = self.model_to_explain[1].fc2(F.relu(self.model_to_explain[1].fc1(all_h)))
+                
+                if flag == 0:
+                    cce_loss = F.binary_cross_entropy_with_logits(pred.squeeze(),target2[n])
+                else:
+                    cce_loss = F.binary_cross_entropy_with_logits(pred.squeeze(),target2[n+num_edges])
+                # size_loss = torch.sum(mask) * size_reg + torch.sum(mask) * size_reg
+                # mask_ent_reg1 = -mask * torch.log(mask) - (1 - mask) * torch.log(1 - mask)
+                # mask_ent_reg2 = -dst_mask * torch.log(dst_mask) - (1 - dst_mask) * torch.log(1 - dst_mask)
+                # mask_ent_loss = entropy_reg * torch.mean(mask_ent_reg1)# + entropy_reg * torch.mean(mask_ent_reg2)
+                loss_ = cce_loss.item() # + size_loss + mask_ent_loss
+
+                loss += loss_      
+                
+        return loss
+
+    def prepare(self):
         """
         Before we can use the explainer we first need to train it. This is done here.
         :param indices: Indices over which we wish to train.
@@ -229,14 +272,9 @@ class PGExplainer(BaseExplainer):
             nn.ReLU(),
             nn.Linear(16,1)
         )
+        self.train()
 
-        if indices is None: # Consider all indices
-            indices = range(0, self.G.num_nodes('author'))
-
-        self.train(indices=indices)
-        # return mae
-
-    def train(self, indices = None):
+    def train(self):
         """
         Main method to train the model
         :param indices: Indices that we want to use for training.
@@ -249,210 +287,226 @@ class PGExplainer(BaseExplainer):
         optimizer = Adam(self.explainer_model.parameters(), lr=self.lr)
         temp_schedule = lambda e: self.temp[0]*((self.temp[1]/self.temp[0])**(e/self.epochs))
 
-        embed = {}
-        # If we are explaining a graph, we can determine the embeddings before we run
-        if self.type == 'node':
-            for ntype in self.G.ntypes:
-                embed[ntype] = self.model_to_explain[0](self.G.to('cuda'), ntype).detach()
-        all_loss = []
-        mae_list = []
+        model_out_path = '/home/jiazhengli/xdgnn/HTGNN/output/explainer_mag'
+        # early_stopping
+        early_stopping = EarlyStopping(patience=15, verbose=True, path=f'{model_out_path}/checkpoint_mag.pt')
+
+        size_reg = self.reg_coefs[0]
+        entropy_reg = self.reg_coefs[1]
+
+        rate_list = [0.05,0.1,0.2]
+
         # Start training loop
         for e in tqdm(range(0, self.epochs)):
+
             self.explainer_model.train()
-            optimizer.zero_grad()
-            # loss = torch.FloatTensor([0]).detach().to('cuda')
-            # closs = torch.FloatTensor([0]).detach().to('cuda')
-            # mloss = torch.FloatTensor([0]).detach().to('cuda')
-            # sloss = torch.FloatTensor([0]).detach().to('cuda')
             t = temp_schedule(e)
+            epoch_loss = 0
+            epoch_closs = 0
+            epoch_mloss = 0
+            epoch_sloss = 0
 
-            h_list = []
-            masked_feat = torch.tensor([]).to('cuda')
-            org_feat = self.model_to_explain[0](self.G.to('cuda'),'author')
-            # org_feat = torch.zeros(self.G.num_nodes('author'),32).to('cuda')
+            # i = random.choice(list(range(len(self.G_train))))
 
-            size_reg = self.reg_coefs[0]
-            entropy_reg = self.reg_coefs[1]
-            size_loss = 0
-            mask_ent_loss = 0
+            for i in range(len(self.G_train)):
 
-            for n in indices:
+                print('i',i)
+
+                org_feat = self.model_to_explain[0](self.G_train[i].to('cuda'),'author')
+                pos_label, neg_label = self.G_train_label[i][0].to('cuda'), self.G_train_label[i][1].to('cuda')
+                pos_score = self.model_to_explain[1](pos_label, org_feat)
+                neg_score = self.model_to_explain[1](neg_label, org_feat)
+                ori_pred = torch.cat((pos_score.squeeze(1), neg_score.squeeze(1)))
+                target = torch.sigmoid(ori_pred).detach()
+
+                embed = {}
+                # If we are explaining a graph, we can determine the embeddings before we run
+                for ntype in self.G_train[i].ntypes:
+                    embed[ntype] = self.model_to_explain[0](self.G_train[i].to('cuda'), ntype).detach()
+
+                
+                num = self.G_train_label[i][0].num_edges()
+                batchs = num // 32
+                start = random.choice(list(range(batchs-5)))
+                # batchs = 3
+                all_loss = 0
+                all_closs = 0
+                all_mloss = 0
+                all_sloss = 0
+
+                # change here
+                for j in range(start, start + 5):
+                    # print(j)
+                    # print(torch.cuda.memory_summary())
+                    optimizer.zero_grad()
+                    # loss = torch.FloatTensor([0]).detach().to('cuda')
+                    loss = 0
+                    closs = 0
+                    mloss = 0
+                    sloss = 0
+
+                    lo = 32*j
+                    hi = min(32*(j+1),self.G_train_label[i][0].num_edges())
+                    # print(lo,hi)
+                    for n in range(lo, hi):
+
+                        n = int(n)
+                        # print(n)
+                        flag = random.choice([0,1])
+
+                        src, dst = self.G_train_label[i][flag].edges()[0][n], self.G_train_label[i][flag].edges()[1][n]
+
+                        sg, _ = dgl.khop_in_subgraph(self.G_train[i], {'author': (src,dst)}, k=2, store_ids=True)
+
+                        input_expl = self._create_explainer_input(sg, embed, src, dst).unsqueeze(0).to('cuda')
+
+                        sampling_weights = self.explainer_model(input_expl)
+
+                        mask = self._sample_graph(sampling_weights, t, bias=self.sample_bias).squeeze().to('cuda')
+
+                        h_m = self.model_to_explain[0](sg.to('cuda'),'author',edge_weight=mask)
+
+                        src_h = h_m[torch.where(sg.ndata[dgl.NID]['author'] == src)]
+                        dst_h = h_m[torch.where(sg.ndata[dgl.NID]['author'] == dst)]
+
+                        all_h = torch.cat((src_h, dst_h),dim=1).to('cuda')
+                        pred = self.model_to_explain[1].fc2(F.relu(self.model_to_explain[1].fc1(all_h)))
+                        
+                        if flag == 0:
+                            cce_loss = F.binary_cross_entropy_with_logits(pred.squeeze(),target[n])
+                        else:
+                            cce_loss = F.binary_cross_entropy_with_logits(pred.squeeze(),target[n+num])
+
+                        size_loss = torch.sum(mask) * size_reg + torch.sum(mask) * size_reg
+                        mask_ent_reg1 = -mask * torch.log(mask) - (1 - mask) * torch.log(1 - mask)
+                        mask_ent_loss = entropy_reg * torch.mean(mask_ent_reg1)# + entropy_reg * torch.mean(mask_ent_reg2)
+                        loss_ = cce_loss + size_loss + mask_ent_loss
+
+                        loss += loss_
+                        closs += cce_loss.item()
+                        sloss += size_loss.item()
+                        mloss += mask_ent_loss.item()
+
+                    # print("1:{}".format(torch.cuda.memory_allocated(0)))
+                    loss.backward()
+                    optimizer.step()
+                # print(":{}".format(torch.cuda.memory_allocated(0)))
+
+
+                    all_loss += loss.item()
+                    all_closs += closs
+                    all_mloss += mloss
+                    all_sloss += sloss
+            
+                epoch_loss += all_loss
+                epoch_closs += all_closs
+                epoch_mloss += all_mloss
+                epoch_sloss += all_sloss
+
+
+            writer.add_scalar('loss/all_loss', epoch_loss, e)
+            writer.add_scalar('loss/closs', epoch_closs, e)
+            writer.add_scalar('loss/mloss', epoch_mloss, e)
+            writer.add_scalar('loss/sloss', epoch_sloss, e)
+        
+
+            eval_loss = self.evaluate(self.explainer_model, self.G_val, self.G_val_label, t)
+            early_stopping(eval_loss, self.explainer_model)
+            if early_stopping.early_stop:
+                print("Early stopping", e)
+                break
+
+            
+
+
+
+        # testing
+
+        self.explainer_model.load_state_dict(torch.load(f'{model_out_path}/checkpoint_mag.pt'))
+        self.explainer_model.eval()
+        for i in range(len(self.G_test)):
+            embed = {}
+            for ntype in self.G_test[i].ntypes:
+                embed[ntype] = self.model_to_explain[0](self.G_test[i].to('cuda'), ntype).detach()
+
+            org_feat2 = self.model_to_explain[0](self.G_test[i].to('cuda'),'author')
+            pos_label2, neg_label2 = self.G_test_label[i][0].to('cuda'), self.G_test_label[i][1].to('cuda')
+            pos_score2 = self.model_to_explain[1](pos_label2, org_feat2)
+            neg_score2 = self.model_to_explain[1](neg_label2, org_feat2)
+            ori_pred2 = torch.cat((pos_score2.squeeze(1), neg_score2.squeeze(1)))
+            target2 = torch.sigmoid(ori_pred2).detach()
+
+            num_edges = self.G_test_label[i][0].num_edges()
+            edge_list = list(range(num_edges))
+            # how many edges to test?
+            edge_list = sample(edge_list, 1000)
+                
+            all_pred = []
+            target_list = []
+
+            for n in edge_list:
                 n = int(n)
-                if self.type == 'node':
-                    sg, inverse_indices = dgl.khop_in_subgraph(self.G, {'author': n}, k=2, store_ids=True)
+                # print(n)
+                target_list.append(torch.round(target2[n]).detach().cpu().numpy())
 
-                    # key
-                    # if(sg.num_nodes(ntype='author') <=1):
-                    #     continue
+                src, dst = self.G_test_label[i][0].edges()[0][n], self.G_test_label[i][0].edges()[1][n]
 
-                else:
-                    feats = self.features[n].detach()
-                    graph = self.graphs[n].detach()
-                    embeds = self.model_to_explain.embedding(feats, graph).detach()
+                sg, _ = dgl.khop_in_subgraph(self.G_test[i], {'author': (src,dst)}, k=2, store_ids=True)
 
-                # Sample possible explanation
-
-                input_expl = self._create_explainer_input(sg, inverse_indices, embed, n).unsqueeze(0).to('cuda')
+                input_expl = self._create_explainer_input(sg, embed, src, dst).unsqueeze(0).to('cuda')
 
                 sampling_weights = self.explainer_model(input_expl)
 
                 mask = self._sample_graph(sampling_weights, t, bias=self.sample_bias).squeeze().to('cuda')
-                # shape of mask: num of edge, 0-1 continuous number
-                #masked_pred = self.model_to_explain(feats, graph, edge_weights=mask)
 
-                # masked_sg = self._mask_graph(sg, mask) 
+                for rate in rate_list:
 
-                # print(mask.shape[0])
-                # print(sg.to('cuda').number_of_edges())
-                print(n) # n=3 problem
-                h_m = self.model_to_explain[0](sg.to('cuda'),'author',edge_weight=mask)
-                # masked_pred = self.model_to_explain[1](h)
+                    new_mask = self._mask_graph_new(mask, rate) 
 
-                # h = self.model_to_explain[0](sg.to('cuda'),'author')
-                # original_pred = self.model_to_explain[1](h)
+                    h_m = self.model_to_explain[0](sg.to('cuda'),'author',edge_weight=new_mask)
 
-                if self.type == 'node': # we only care for the prediction of the node
+                    src_h = h_m[torch.where(sg.ndata[dgl.NID]['author'] == src)]
+                    dst_h = h_m[torch.where(sg.ndata[dgl.NID]['author'] == dst)]
 
-                    # original_pred = original_pred[torch.where(sg.ndata[dgl.NID]['state'] == n)]
-                    h_list.append(h_m[torch.where(sg.ndata[dgl.NID]['author'] == n)])
-                    # masked_feat = torch.cat((masked_feat,h_m[torch.where(sg.ndata[dgl.NID]['author'] == n)]),dim=1)
-                    # masked_feat[n] = h_m[torch.where(sg.ndata[dgl.NID]['author'] == n)]
-                    # org_feat[n] = h[torch.where(sg.ndata[dgl.NID]['author'] == n)]
+                    all_h = torch.cat((src_h, dst_h),dim=1).to('cuda')
+                    pred = self.model_to_explain[1].fc2(F.relu(self.model_to_explain[1].fc1(all_h)))
 
-                size_loss += torch.sum(mask) * size_reg
-                mask_ent_reg = -mask * torch.log(mask) - (1 - mask) * torch.log(1 - mask)
-                mask_ent_loss += entropy_reg * torch.mean(mask_ent_reg)
+                    all_pred.append(pred.squeeze().detach().cpu().numpy())
 
-                del sg, inverse_indices
+            for n in edge_list:
+                n = int(n)
+                target_list.append(torch.round(target2[n+num_edges]).detach().cpu().numpy())
 
-            pos_label, neg_label = self.G_label[0], self.G_label[1]
-            pos_score = self.model_to_explain[1](pos_label, masked_feat)
-            neg_score = self.model_to_explain[1](neg_label, masked_feat)
-            masked_pred = torch.cat((pos_score.squeeze(1), neg_score.squeeze(1)))
+                src, dst = self.G_test_label[i][1].edges()[0][n], self.G_test_label[i][1].edges()[1][n]
 
-            pos_score = self.model_to_explain[1](pos_label, org_feat)
-            neg_score = self.model_to_explain[1](neg_label, org_feat)
-            ori_pred = torch.cat((pos_score.squeeze(1), neg_score.squeeze(1)))
-            target = torch.sigmoid(ori_pred)
+                sg, _ = dgl.khop_in_subgraph(self.G_test[i], {'author': (src,dst)}, k=2, store_ids=True)
 
-            cce_loss = F.binary_cross_entropy_with_logits(masked_pred,target)
-            loss = cce_loss + size_loss + mask_ent_loss
+                input_expl = self._create_explainer_input(sg, embed, src, dst).unsqueeze(0).to('cuda')
 
-            # loss, closs, mloss, sloss = self._loss(masked_pred, target, mask, self.reg_coefs)
-            # loss = 
-            # loss += id_loss
-            # closs += closs_
-            # mloss += mloss_
-            # sloss += sloss_
-            
-            writer.add_scalar('loss/all_loss', loss, e)
-            writer.add_scalar('loss/closs', cce_loss, e)
-            writer.add_scalar('loss/mloss', mask_ent_loss, e)
-            writer.add_scalar('loss/sloss', size_loss, e)
-            print('train:',e,loss.item())
-            all_loss.append(loss.item())
-            loss.backward()
-            optimizer.step()
+                sampling_weights = self.explainer_model(input_expl)
 
-            # self.eval()
-            # evaluate the result
-            # print('evaluating...')
+                mask = self._sample_graph(sampling_weights, t, bias=self.sample_bias).squeeze().to('cuda')
 
-            # if e % 10 == 0:
-            #     masked_feat = torch.zeros(self.G.num_nodes('author'),32).to('cuda')
-            #     self.explainer_model.eval()
-            #     # mae = 0
-            #     for n in range(self.G2.num_nodes('author')):
-            #         n = int(n)
-            #         if self.type == 'node':
-            #             sg, inverse_indices = dgl.khop_in_subgraph(self.G2, {'author': n}, k=2, store_ids=True)
-            #             # key
-            #             # if(sg.num_nodes(ntype='author') <=1):
-            #             #     continue
-            #             # Similar to the original paper we only consider a subgraph for explaining
+                for rate in rate_list:
 
-            #         else:
-            #             feats = self.features[n].detach()
-            #             graph = self.graphs[n].detach()
-            #             embeds = self.model_to_explain.embedding(feats, graph).detach()
+                    new_mask = self._mask_graph_new(mask, rate) 
 
-            #         input_expl = self._create_explainer_input(sg, inverse_indices, embed, n).unsqueeze(0).to('cuda')
-            #         # print(input_expl.shape)
-            #         sampling_weights = self.explainer_model(input_expl)
-            #         mask = self._sample_graph(sampling_weights, t, bias=self.sample_bias).squeeze().to('cuda')
-            #         # shape of mask: num of edge, 0-1 continuous number
+                    h_m = self.model_to_explain[0](sg.to('cuda'),'author',edge_weight=new_mask)
 
-            #         masked_sg = self._mask_graph(sg, mask) 
+                    src_h = h_m[torch.where(sg.ndata[dgl.NID]['author'] == src)]
+                    dst_h = h_m[torch.where(sg.ndata[dgl.NID]['author'] == dst)]
 
-            #         h = self.model_to_explain[0](masked_sg.to('cuda'),'author')
-            #         # masked_pred = self.model_to_explain[1](h)
+                    all_h = torch.cat((src_h, dst_h),dim=1).to('cuda')
+                    pred = self.model_to_explain[1].fc2(F.relu(self.model_to_explain[1].fc1(all_h)))
 
-            #         # h = self.model_to_explain[0](sg.to('cuda'),'author')
-            #         # original_pred = self.model_to_explain[1](h)
+                    all_pred.append(pred.squeeze().detach().cpu().numpy())
 
-            #         if self.type == 'node': # we only care for the prediction of the node
-
-            #             masked_feat[n] = h_m[torch.where(sg.ndata[dgl.NID]['author'] == n)]
-
-            #         # l = F.l1_loss(original_pred, masked_pred)
-            #         # print(l)
-            #         # mae += l 
-            #     # mae /= len(indices)
-            #     pos_label, neg_label = self.G_label[0], self.G_label[1]
-            #     pos_score = self.model_to_explain[1](pos_label, masked_feat)
-            #     neg_score = self.model_to_explain[1](neg_label, masked_feat)
-            #     masked_pred = torch.cat((pos_score.squeeze(1), neg_score.squeeze(1))).detach().cpu()
-
-            #     pos_score = self.model_to_explain[1](pos_label, org_feat)
-            #     neg_score = self.model_to_explain[1](neg_label, org_feat)
-            #     ori_pred = torch.cat((pos_score.squeeze(1), neg_score.squeeze(1)))
-            #     label = torch.round(torch.sigmoid(ori_pred)).detach().cpu()
-
-            #     auc = roc_auc_score(label, masked_pred)
-            #     ap = average_precision_score(label, masked_pred)
-
-            #     writer.add_scalar('loss/auc', auc, e)
-            #     writer.add_scalar('loss/ap', ap, e)
-
-
-                # print('test:',e,mae.item())
-                # mae_list.append(mae.item())
-        # all_lost_np = np.array(all_loss)
-        # all_mae_np = np.array(mae_list)
-        # with open('/home/jiazhengli/xdgnn/HTGNN/output/trainloss.txt','a+') as f:
-        #     f.write('\n'*3)
-        #     np.savetxt(f, all_lost_np)
-        # with open('/home/jiazhengli/xdgnn/HTGNN/output/testloss.txt','a+') as f:
-        #     f.write('\n'*3)
-        #     np.savetxt(f, all_mae_np)
-
-
-    def explain(self, index):
-        """
-        Given the index of a node/graph this method returns its explanation. This only gives sensible results if the prepare method has
-        already been called.
-        :param index: index of the node/graph that we wish to explain
-        :return: explanaiton graph and edge weights
-        """
-        index = int(index)
-        if self.type == 'node':
-            # Similar to the original paper we only consider a subgraph for explaining
-            graph = ptgeom.utils.k_hop_subgraph(index, 3, self.graphs)[1]
-            embeds = self.model_to_explain.embedding(self.features, self.graphs).detach()
-        else:
-            feats = self.features[index].clone().detach()
-            graph = self.graphs[index].clone().detach()
-            embeds = self.model_to_explain.embedding(feats, graph).detach()
-
-        # Use explainer mlp to get an explanation
-        input_expl = self._create_explainer_input(graph, embeds, index).unsqueeze(dim=0)
-        sampling_weights = self.explainer_model(input_expl)
-        mask = self._sample_graph(sampling_weights, training=False).squeeze()
-
-        expl_graph_weights = torch.zeros(graph.size(1)) # Combine with original graph
-        for i in range(0, mask.size(0)):
-            pair = graph.T[i]
-            t = index_edge(graph, pair)
-            expl_graph_weights[t] = mask[i]
-
-        return graph, expl_graph_weights
+            for j in range(len(rate_list)):
+                print(rate_list[j])
+                preds = all_pred[j::len(rate_list)]
+                auc = roc_auc_score(target_list, preds)
+                ap = average_precision_score(target_list, preds)
+                # writer.add_scalar(f'loss/auc_{rate_list[i]}', auc, e)
+                # writer.add_scalar(f'loss/ap_{rate_list[i]}', ap, e)
+                print('auc',auc)
+                print('ap',ap)

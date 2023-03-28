@@ -9,19 +9,14 @@ import torch.nn.functional as F
 from dgl.data.utils import load_graphs
 from utils.data import load_COVID_data
 import numpy as np
+from random import sample
+from utils.pytorchtools import EarlyStopping
 
 from torch.utils.tensorboard import SummaryWriter 
-writer = SummaryWriter('/home/jiazhengli/xdgnn/HTGNN/output/covid_baselines2')
+writer = SummaryWriter('/home/jiazhengli/xdgnn/HTGNN/output/covid_test')
 # writer = SummaryWriter('/home/jiazhengli/xdgnn/HTGNN/output/covid_5')
-# writer.add_scalar('loss/loss1', loss1, epoch)
 
-# import sys
-# sys.path.append("/home/jiazhengli/xdgnn/RE-ParameterizedExplainerForGraphNeuralNetworks") 
-
-from model.BaseExplainer import BaseExplainer
-# from ExplanationEvaluation.utils.graph import index_edge
-
-class PGExplainer(BaseExplainer):
+class PGExplainer():
     """
     A class encaptulating the PGExplainer (https://arxiv.org/abs/2011.04573).
     
@@ -41,15 +36,17 @@ class PGExplainer(BaseExplainer):
     :function train: train the explainer
     :function explain: search for the subgraph which contributes most to the clasification decision of the model-to-be-explained.
     """
-    def __init__(self, model_to_explain, G, G2, task, time_win, epochs=300, lr=0.01, temp=(5.0, 2.0), reg_coefs=(0.0001, 0.5),sample_bias=0):
+    def __init__(self, model_to_explain, G_train, G_val, G_test, time_win, epochs=100, lr=0.005, temp=(5.0, 2.0), reg_coefs=(0.0001, 0.5),sample_bias=0):
         super().__init__()
 
         self.model_to_explain = model_to_explain
         self.model_to_explain.eval()
-        self.G = G
-        self.G2 = G2
+        self.G_train = G_train
+        self.G_val = G_val
+        self.G_test = G_test
+
         self.tw = time_win
-        self.type = task
+
         self.epochs = epochs
         self.lr = lr
         self.temp = temp
@@ -57,10 +54,7 @@ class PGExplainer(BaseExplainer):
         self.sample_bias = sample_bias
         self.node_emb = 8
 
-        if self.type == "graph":
-            self.expl_embedding = self.node_emb * 2
-        else:
-            self.expl_embedding = 8+8+8# +4+8
+        self.expl_embedding = 8+8+8 +4+8
 
     def create_1d_absolute_sin_cos_embedding(self, pos_len, dim):
         assert dim % 2 == 0, "wrong dimension!"
@@ -84,7 +78,7 @@ class PGExplainer(BaseExplainer):
         return position_emb
 
 
-    def _create_explainer_input(self, sg, inverse_indices, embed, node_id):
+    def _create_explainer_input(self, sg, embed, node_id):
         """
         Given the embeddign of the sample by the model that we wish to explain, this method construct the input to the mlp explainer model.
         Depending on if the task is to explain a graph or a sample, this is done by either concatenating two or three embeddings.
@@ -115,9 +109,9 @@ class PGExplainer(BaseExplainer):
             nemb = F.normalize(nemb,dim=1)
 
             # with none
-            eemb = torch.cat([srcemb,dstemb,nemb],dim=1)
+            # eemb = torch.cat([srcemb,dstemb,nemb],dim=1)
             # with all
-            # eemb = torch.cat([srcemb,dstemb,posemb,hetemb,nemb],dim=1)
+            eemb = torch.cat([srcemb,dstemb,posemb,hetemb,nemb],dim=1)
 
             allemb = torch.cat([allemb,eemb],dim=0)
 
@@ -163,39 +157,8 @@ class PGExplainer(BaseExplainer):
 
         # Explanation loss
         cce_loss = F.l1_loss(masked_pred, original_pred)
-        # print('1',cce_loss)
-        # print(size_loss)
-        # print(mask_ent_loss)
+
         return cce_loss + mask_ent_loss + size_loss, cce_loss, mask_ent_loss, size_loss
-
-    def _mask_graph(self, sg, mask):
-        l = {}
-        k = 0
-        for srctype, etype, dsttype in sg.canonical_etypes:
-            src, dst = sg.edges(etype=etype)
-            # len(src)
-            for j in range(k,k+len(src)):
-                l[j] = [etype,j-k,src[j-k],dst[j-k]]
-            k += len(src)
-
-        _, idx = torch.sort(mask,descending=True)
-        top_idx = idx[:int(0.2*len(idx))]
-
-        masked_sg = sg
-
-        for srctype, etype, dsttype in sg.canonical_etypes:
-            eids = sg.edges(form='eid',etype=etype)
-            masked_sg = dgl.remove_edges(masked_sg,eids,etype)
-
-        # c = {type:0 for type in sg.etypes}
-
-        for i in range(len(top_idx)):
-            type = l[top_idx[i].item()][0]
-            src = l[top_idx[i].item()][2]
-            dst = l[top_idx[i].item()][3]
-            masked_sg.add_edges(src,dst,etype=type)
-
-        return masked_sg
 
     def _mask_graph_new(self, mask, rate):
         
@@ -219,13 +182,56 @@ class PGExplainer(BaseExplainer):
             nn.Linear(32, 1),
         )
 
-        if indices is None: # Consider all indices
-            indices = range(0, self.G.num_nodes('state'))
+        self.train()
 
-        self.train(indices=indices)
-        # return mae
+    def evaluate(self, explainer_model, G_val, t):
+        explainer_model.eval()
+        closs = 0
+        for i in range(len(G_val)):
+            embed = {}
+            for ntype in G_val[i].ntypes:
+                embed[ntype] = self.model_to_explain[0](G_val[i].to('cuda'), ntype).detach()
+            num_of_states = G_val[i].number_of_nodes('state')
+            states_list = list(range(num_of_states))
+            states_list = sample(states_list,int(num_of_states/10))
+            
+            for n in states_list:
+                n = int(n)
+                sg, _ = dgl.khop_in_subgraph(G_val[i], {'state': n}, k=2, store_ids=True)
+                    # key
+                if(sg.num_nodes(ntype='state') <=1):
+                    continue
+                    # Similar to the original paper we only consider a subgraph for explaining
 
-    def train(self, indices = None):
+                input_expl = self._create_explainer_input(sg, embed, n).unsqueeze(0).to('cuda')
+
+                sampling_weights = self.explainer_model(input_expl)
+
+                mask = self._sample_graph(sampling_weights, t, bias=self.sample_bias).squeeze().to('cuda')
+                # shape of mask: num of edge, 0-1 continuous number
+                #masked_pred = self.model_to_explain(feats, graph, edge_weights=mask)
+
+                # masked_sg = self._mask_graph(sg, mask) 
+
+                h = self.model_to_explain[0](sg.to('cuda'),'state',edge_weight=mask)
+                masked_pred = self.model_to_explain[1](h)
+
+                h = self.model_to_explain[0](sg.to('cuda'),'state')
+                original_pred = self.model_to_explain[1](h)
+
+                original_pred = original_pred[torch.where(sg.ndata[dgl.NID]['state'] == n)]
+                masked_pred = masked_pred[torch.where(sg.ndata[dgl.NID]['state'] == n)]
+
+                id_loss, closs_, mloss_, sloss_ = self._loss(masked_pred, original_pred, mask, self.reg_coefs)
+
+                closs += closs_.item()
+            
+            closs += closs_
+
+            return closs
+            
+
+    def train(self):
         """
         Main method to train the model
         :param indices: Indices that we want to use for training.
@@ -238,177 +244,190 @@ class PGExplainer(BaseExplainer):
         optimizer = Adam(self.explainer_model.parameters(), lr=self.lr)
         temp_schedule = lambda e: self.temp[0]*((self.temp[1]/self.temp[0])**(e/self.epochs))
 
-        embed = {}
-        # If we are explaining a graph, we can determine the embeddings before we run
-        if self.type == 'node':
-            for ntype in self.G.ntypes:
-                embed[ntype] = self.model_to_explain[0](self.G.to('cuda'), ntype).detach()
+        model_out_path = '/home/jiazhengli/xdgnn/HTGNN/output/explainer_covid'
 
-        embed2 = {}
-        # If we are explaining a graph, we can determine the embeddings before we run
-        if self.type == 'node':
-            for ntype in self.G2.ntypes:
-                embed2[ntype] = self.model_to_explain[0](self.G2.to('cuda'), ntype).detach()
-
-
-        all_loss = []
-        mae_list = []
         # Start training loop
-        for e in tqdm(range(0, self.epochs)):
-            self.explainer_model.train()
-            optimizer.zero_grad()
-            loss = torch.FloatTensor([0]).detach().to('cuda')
-            closs = torch.FloatTensor([0]).detach().to('cuda')
-            mloss = torch.FloatTensor([0]).detach().to('cuda')
-            sloss = torch.FloatTensor([0]).detach().to('cuda')
-            t = temp_schedule(e)
-            for n in indices:
-                n = int(n)
-                if self.type == 'node':
-                    sg, inverse_indices = dgl.khop_in_subgraph(self.G, {'state': n}, k=2, store_ids=True)
+        early_stopping = EarlyStopping(patience=10, verbose=True, path=f'{model_out_path}/checkpoint_covid.pt')
 
-                    # key
+        for e in tqdm(range(0, self.epochs)):
+
+            epoch_loss = 0
+            epoch_closs = 0
+            epoch_mloss = 0
+            epoch_sloss = 0
+
+            for i in range(len(self.G_train)):
+
+                embed = {}
+                for ntype in self.G_train[i].ntypes:
+                    embed[ntype] = self.model_to_explain[0](self.G_train[i].to('cuda'), ntype).detach()
+                # self.G_train[i]
+
+                self.explainer_model.train()
+                optimizer.zero_grad()
+                loss = torch.FloatTensor([0]).detach().to('cuda')
+                closs = 0
+                mloss = 0
+                sloss = 0
+                t = temp_schedule(e)
+
+                num_of_states = self.G_train[i].number_of_nodes('state')
+                states_list = list(range(num_of_states))
+                states_list = sample(states_list,int(num_of_states/20))
+
+                for n in states_list:
+                    n = int(n)
+
+                    sg, _ = dgl.khop_in_subgraph(self.G_train[i], {'state': n}, k=2, store_ids=True)
+                        # key
                     if(sg.num_nodes(ntype='state') <=1):
                         continue
-                    # Similar to the original paper we only consider a subgraph for explaining
-                    # feats = self.features
-                else:
-                    feats = self.features[n].detach()
-                    graph = self.graphs[n].detach()
-                    embeds = self.model_to_explain.embedding(feats, graph).detach()
+                        # Similar to the original paper we only consider a subgraph for explaining
 
-                # Sample possible explanation
+                    input_expl = self._create_explainer_input(sg, embed, n).unsqueeze(0).to('cuda')
 
-                input_expl = self._create_explainer_input(sg, inverse_indices, embed, n).unsqueeze(0).to('cuda')
+                    sampling_weights = self.explainer_model(input_expl)
 
-                sampling_weights = self.explainer_model(input_expl)
+                    mask = self._sample_graph(sampling_weights, t, bias=self.sample_bias).squeeze().to('cuda')
+                    # shape of mask: num of edge, 0-1 continuous number
+                    #masked_pred = self.model_to_explain(feats, graph, edge_weights=mask)
 
-                mask = self._sample_graph(sampling_weights, t, bias=self.sample_bias).squeeze().to('cuda')
-                # shape of mask: num of edge, 0-1 continuous number
-                #masked_pred = self.model_to_explain(feats, graph, edge_weights=mask)
+                    # masked_sg = self._mask_graph(sg, mask) 
 
-                # masked_sg = self._mask_graph(sg, mask) 
+                    h = self.model_to_explain[0](sg.to('cuda'),'state',edge_weight=mask)
+                    masked_pred = self.model_to_explain[1](h)
 
-                # print(mask.shape[0])
-                # print(sg.to('cuda').number_of_edges())
-                h = self.model_to_explain[0](sg.to('cuda'),'state',edge_weight=mask)
-                masked_pred = self.model_to_explain[1](h)
-
-                h = self.model_to_explain[0](sg.to('cuda'),'state')
-                original_pred = self.model_to_explain[1](h)
-
-                if self.type == 'node': # we only care for the prediction of the node
+                    h = self.model_to_explain[0](sg.to('cuda'),'state')
+                    original_pred = self.model_to_explain[1](h)
 
                     original_pred = original_pred[torch.where(sg.ndata[dgl.NID]['state'] == n)]
                     masked_pred = masked_pred[torch.where(sg.ndata[dgl.NID]['state'] == n)]
 
+                    id_loss, closs_, mloss_, sloss_ = self._loss(masked_pred, original_pred, mask, self.reg_coefs)
+                    loss += id_loss
+                    closs += closs_.item()
+                    mloss += mloss_.item()
+                    sloss += sloss_.item()
+                # writer.add_scalar('loss/all_loss', loss, e)
+                # writer.add_scalar('loss/closs', closs, e)
+                # writer.add_scalar('loss/mloss', mloss, e)
+                # writer.add_scalar('loss/sloss', sloss, e)
+                # print('train:',e,loss.item())
+                # all_loss.append(loss.item())
+                # loss.backward()
+                # optimizer.step()
 
-                id_loss, closs_, mloss_, sloss_ = self._loss(masked_pred, original_pred, mask, self.reg_coefs)
-                loss += id_loss
-                closs += closs_
-                mloss += mloss_
-                sloss += sloss_
-            writer.add_scalar('loss/all_loss', loss, e)
-            writer.add_scalar('loss/closs', closs, e)
-            writer.add_scalar('loss/mloss', mloss, e)
-            writer.add_scalar('loss/sloss', sloss, e)
-            print('train:',e,loss.item())
-            all_loss.append(loss.item())
-            loss.backward()
+                epoch_loss += loss
+                epoch_closs += closs
+                epoch_mloss += mloss
+                epoch_sloss += sloss
+
+            epoch_loss.backward()
             optimizer.step()
 
-            # self.eval()
+            writer.add_scalar('loss/all_loss', epoch_loss, e)
+            writer.add_scalar('loss/closs', epoch_closs, e)
+            writer.add_scalar('loss/mloss', epoch_mloss, e)
+            writer.add_scalar('loss/sloss', epoch_sloss, e)
+
+            # eval
+            eval_loss = self.evaluate(self.explainer_model, self.G_val, t)
+            early_stopping(eval_loss, self.explainer_model)
+            if early_stopping.early_stop:
+                print("Early stopping", e)
+                break
+
+        # test
+        self.explainer_model.load_state_dict(torch.load(f'{model_out_path}/checkpoint_covid.pt'))
+        self.explainer_model.eval()
+        all_results = np.array([])
+        for i in range(len(self.G_test)):
+            embed = {}
+            for ntype in self.G_test[i].ntypes:
+                embed[ntype] = self.model_to_explain[0](self.G_test[i].to('cuda'), ntype).detach()
+            num_of_states = self.G_test[i].number_of_nodes('state')
+            mae = []
+            for n in range(num_of_states):
+                n = int(n)
+                sg, _ = dgl.khop_in_subgraph(self.G_test[i], {'state': n}, k=2, store_ids=True)
+                    # key
+                if(sg.num_nodes(ntype='state') <=1):
+                    continue
+                    # Similar to the original paper we only consider a subgraph for explaining
+
+                input_expl = self._create_explainer_input(sg, embed, n).unsqueeze(0).to('cuda')
+                # print(input_expl.shape)
+                sampling_weights = self.explainer_model(input_expl)
+                mask = self._sample_graph(sampling_weights, t, bias=self.sample_bias).squeeze().to('cuda')
+                # shape of mask: num of edge, 0-1 continuous number
+
+                h = self.model_to_explain[0](sg.to('cuda'),'state')
+                original_pred = self.model_to_explain[1](h)
+                original_pred = original_pred[torch.where(sg.ndata[dgl.NID]['state'] == n)]
+
+                rate_list = [0.05, 0.1, 0.2]
+
+                for rate in rate_list:
+                # masked_sg = self._mask_graph(sg, mask) 
+                    new_mask = self._mask_graph_new(mask, rate)
+
+                    h = self.model_to_explain[0](sg.to('cuda'),'state',edge_weight=new_mask)
+                    masked_pred = self.model_to_explain[1](h)
+                    masked_pred = masked_pred[torch.where(sg.ndata[dgl.NID]['state'] == n)]
+
+                    l = F.l1_loss(original_pred, masked_pred)
+                    # print(l)
+                    mae.append(l.item()) 
+
+            results = np.mean(np.array(mae).reshape((-1,3)),axis=0)
+
+            all_results = np.concatenate((all_results,results))
+        all_results = np.mean(all_results.reshape((-1,3)),axis=0)
+            # for i in range(len(rate_list)):
+            #     writer.add_scalar(f'loss/testmae_{rate_list[i]}', results[i], e)
+        print(all_results)
+
+
             # evaluate the result
             # print('evaluating...')
-            if (e+1) % 10 == 0:
-                self.explainer_model.eval()
+            # if (e+1) % 10 == 0:
+            #     self.explainer_model.eval()
 
-                mae = []
-                for n in range(self.G2.num_nodes('state')):
-                    n = int(n)
-                    if self.type == 'node':
-                        sg, inverse_indices = dgl.khop_in_subgraph(self.G2, {'state': n}, k=2, store_ids=True)
-                        # key
-                        if(sg.num_nodes(ntype='state') <=1):
-                            continue
-                        # Similar to the original paper we only consider a subgraph for explaining
-                        # feats = self.features
-                        # graph = ptgeom.utils.k_hop_subgraph(n, 2, self.graphs)[1]  # k-hop to use?
-                    else:
-                        feats = self.features[n].detach()
-                        graph = self.graphs[n].detach()
-                        embeds = self.model_to_explain.embedding(feats, graph).detach()
+            #     mae = []
+            #     for n in range(self.G2.num_nodes('state')):
+            #         n = int(n)
+            #         sg, _ = dgl.khop_in_subgraph(self.G2, {'state': n}, k=2, store_ids=True)
+            #             # key
+            #         if(sg.num_nodes(ntype='state') <=1):
+            #             continue
+            #             # Similar to the original paper we only consider a subgraph for explaining
 
-                    input_expl = self._create_explainer_input(sg, inverse_indices, embed2, n).unsqueeze(0).to('cuda')
-                    # print(input_expl.shape)
-                    sampling_weights = self.explainer_model(input_expl)
-                    mask = self._sample_graph(sampling_weights, t, bias=self.sample_bias).squeeze().to('cuda')
-                    # shape of mask: num of edge, 0-1 continuous number
+            #         input_expl = self._create_explainer_input(sg, embed2, n).unsqueeze(0).to('cuda')
+            #         # print(input_expl.shape)
+            #         sampling_weights = self.explainer_model(input_expl)
+            #         mask = self._sample_graph(sampling_weights, t, bias=self.sample_bias).squeeze().to('cuda')
+            #         # shape of mask: num of edge, 0-1 continuous number
 
-                    h = self.model_to_explain[0](sg.to('cuda'),'state')
-                    original_pred = self.model_to_explain[1](h)
-                    original_pred = original_pred[torch.where(sg.ndata[dgl.NID]['state'] == n)]
+            #         h = self.model_to_explain[0](sg.to('cuda'),'state')
+            #         original_pred = self.model_to_explain[1](h)
+            #         original_pred = original_pred[torch.where(sg.ndata[dgl.NID]['state'] == n)]
 
-                    rate_list = [0.05, 0.1, 0.2]
-                    for rate in rate_list:
+            #         rate_list = [0.05, 0.1, 0.2]
 
-                    # masked_sg = self._mask_graph(sg, mask) 
-                        new_mask = self._mask_graph_new(mask, rate)
+            #         for rate in rate_list:
+            #         # masked_sg = self._mask_graph(sg, mask) 
+            #             new_mask = self._mask_graph_new(mask, rate)
 
-                        h = self.model_to_explain[0](sg.to('cuda'),'state',edge_weight=new_mask)
-                        masked_pred = self.model_to_explain[1](h)
-                        masked_pred = masked_pred[torch.where(sg.ndata[dgl.NID]['state'] == n)]
+            #             h = self.model_to_explain[0](sg.to('cuda'),'state',edge_weight=new_mask)
+            #             masked_pred = self.model_to_explain[1](h)
+            #             masked_pred = masked_pred[torch.where(sg.ndata[dgl.NID]['state'] == n)]
 
+            #             l = F.l1_loss(original_pred, masked_pred)
+            #             # print(l)
+            #             mae.append(l.item()) 
 
-                        l = F.l1_loss(original_pred, masked_pred)
-                        # print(l)
-                        mae.append(l.item()) 
+            #     results = np.mean(np.array(mae).reshape((-1,3)),axis=0)
 
-                results = np.mean(np.array(mae).reshape((-1,3)),axis=0)
-                # mae /= len(indices)
-                # print('test:',e,mae.item())
-                # mae_list.append(mae.item())
-                for i in range(len(rate_list)):
-                    writer.add_scalar(f'loss/testmae_{rate_list[i]}', results[i], e)
+            #     for i in range(len(rate_list)):
+            #         writer.add_scalar(f'loss/testmae_{rate_list[i]}', results[i], e)
 
-        # all_lost_np = np.array(all_loss)
-        # all_mae_np = np.array(mae_list)
-        # with open('/home/jiazhengli/xdgnn/HTGNN/output/trainloss.txt','a+') as f:
-        #     f.write('\n'*3)
-        #     np.savetxt(f, all_lost_np)
-        # with open('/home/jiazhengli/xdgnn/HTGNN/output/testloss.txt','a+') as f:
-        #     f.write('\n'*3)
-        #     np.savetxt(f, all_mae_np)
-
-        # np.savetxt('/home/jiazhengli/xdgnn/HTGNN/output/trainloss.txt',all_lost_np)
-        # np.savetxt('/home/jiazhengli/xdgnn/HTGNN/output/testloss.txt',all_mae_np)
-
-    def explain(self, index):
-        """
-        Given the index of a node/graph this method returns its explanation. This only gives sensible results if the prepare method has
-        already been called.
-        :param index: index of the node/graph that we wish to explain
-        :return: explanaiton graph and edge weights
-        """
-        index = int(index)
-        if self.type == 'node':
-            # Similar to the original paper we only consider a subgraph for explaining
-            graph = ptgeom.utils.k_hop_subgraph(index, 3, self.graphs)[1]
-            embeds = self.model_to_explain.embedding(self.features, self.graphs).detach()
-        else:
-            feats = self.features[index].clone().detach()
-            graph = self.graphs[index].clone().detach()
-            embeds = self.model_to_explain.embedding(feats, graph).detach()
-
-        # Use explainer mlp to get an explanation
-        input_expl = self._create_explainer_input(graph, embeds, index).unsqueeze(dim=0)
-        sampling_weights = self.explainer_model(input_expl)
-        mask = self._sample_graph(sampling_weights, training=False).squeeze()
-
-        expl_graph_weights = torch.zeros(graph.size(1)) # Combine with original graph
-        for i in range(0, mask.size(0)):
-            pair = graph.T[i]
-            t = index_edge(graph, pair)
-            expl_graph_weights[t] = mask[i]
-
-        return graph, expl_graph_weights
