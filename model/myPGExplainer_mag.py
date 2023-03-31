@@ -11,7 +11,7 @@ from random import sample
 from utils.pytorchtools import EarlyStopping
 
 from torch.utils.tensorboard import SummaryWriter 
-writer = SummaryWriter('/home/jiazhengli/xdgnn/HTGNN/output/mag_baselines')
+writer = SummaryWriter('/home/jiazhengli/xdgnn/HTGNN/output/mag_test')
 
 
 class PGExplainer():
@@ -34,7 +34,7 @@ class PGExplainer():
     :function train: train the explainer
     :function explain: search for the subgraph which contributes most to the clasification decision of the model-to-be-explained.
     """
-    def __init__(self, model_to_explain, G_train, G_train_label, G_val, G_val_label, G_test, G_test_label, time_win, epochs=100, lr=0.005, temp=(5.0, 2.0), reg_coefs=(0.0002, 1),sample_bias=0):
+    def __init__(self, model_to_explain, G_train, G_train_label, G_val, G_val_label, G_test, G_test_label, time_win, epochs=100, lr=0.001, temp=(5.0, 2.0), reg_coefs=(0.0001, 0.01),sample_bias=0):
         super().__init__()
 
         self.model_to_explain = model_to_explain
@@ -53,7 +53,7 @@ class PGExplainer():
         self.sample_bias = sample_bias
         self.node_emb = 8
 
-        self.expl_embedding = 32+32+32+32+8+7
+        self.expl_embedding = 32+32+32+32 +8+7
 
     def create_1d_absolute_sin_cos_embedding(self, pos_len, dim):
         assert dim % 2 == 0, "wrong dimension!"
@@ -222,6 +222,7 @@ class PGExplainer():
             edge_list = list(range(num_edges))
             # how many edges to test?
             edge_list = sample(edge_list, 1000)
+            # edge_list = edge_list[1000:2000]
                 
             for n in edge_list:
                 n = int(n)
@@ -284,17 +285,17 @@ class PGExplainer():
         self.explainer_model = self.explainer_model.to('cuda')
 
         # Create optimizer and temperature schedule
-        optimizer = Adam(self.explainer_model.parameters(), lr=self.lr)
+        optimizer = Adam(self.explainer_model.parameters(), lr=self.lr, weight_decay=1e-4)
         temp_schedule = lambda e: self.temp[0]*((self.temp[1]/self.temp[0])**(e/self.epochs))
 
         model_out_path = '/home/jiazhengli/xdgnn/HTGNN/output/explainer_mag'
         # early_stopping
-        early_stopping = EarlyStopping(patience=15, verbose=True, path=f'{model_out_path}/checkpoint_mag.pt')
+        early_stopping = EarlyStopping(patience=20, verbose=True, path=f'{model_out_path}/checkpoint_mag.pt')
 
         size_reg = self.reg_coefs[0]
         entropy_reg = self.reg_coefs[1]
 
-        rate_list = [0.05,0.1,0.2]
+        rate_list = [0.02,0.05,0.08]
 
         # Start training loop
         for e in tqdm(range(0, self.epochs)):
@@ -310,7 +311,7 @@ class PGExplainer():
 
             for i in range(len(self.G_train)):
 
-                print('i',i)
+                # print('i',i)
 
                 org_feat = self.model_to_explain[0](self.G_train[i].to('cuda'),'author')
                 pos_label, neg_label = self.G_train_label[i][0].to('cuda'), self.G_train_label[i][1].to('cuda')
@@ -381,7 +382,8 @@ class PGExplainer():
                         mask_ent_reg1 = -mask * torch.log(mask) - (1 - mask) * torch.log(1 - mask)
                         mask_ent_loss = entropy_reg * torch.mean(mask_ent_reg1)# + entropy_reg * torch.mean(mask_ent_reg2)
                         loss_ = cce_loss + size_loss + mask_ent_loss
-
+                        
+                        
                         loss += loss_
                         closs += cce_loss.item()
                         sloss += size_loss.item()
@@ -410,103 +412,104 @@ class PGExplainer():
             writer.add_scalar('loss/sloss', epoch_sloss, e)
         
 
-            eval_loss = self.evaluate(self.explainer_model, self.G_val, self.G_val_label, t)
-            early_stopping(eval_loss, self.explainer_model)
-            if early_stopping.early_stop:
-                print("Early stopping", e)
-                break
+            # eval_loss = self.evaluate(self.explainer_model, self.G_val, self.G_val_label, t)
+            # early_stopping(eval_loss, self.explainer_model)
+            # if early_stopping.early_stop:
+            #     print("Early stopping", e)
+            #     break
 
             
-
+            if (e+1) % 5 == 0:
 
 
         # testing
 
-        self.explainer_model.load_state_dict(torch.load(f'{model_out_path}/checkpoint_mag.pt'))
-        self.explainer_model.eval()
-        for i in range(len(self.G_test)):
-            embed = {}
-            for ntype in self.G_test[i].ntypes:
-                embed[ntype] = self.model_to_explain[0](self.G_test[i].to('cuda'), ntype).detach()
+                # self.explainer_model.load_state_dict(torch.load(f'{model_out_path}/checkpoint_mag.pt'))
+                self.explainer_model.eval()
+                for i in range(len(self.G_test)):
+                    embed = {}
+                    for ntype in self.G_test[i].ntypes:
+                        embed[ntype] = self.model_to_explain[0](self.G_test[i].to('cuda'), ntype).detach()
 
-            org_feat2 = self.model_to_explain[0](self.G_test[i].to('cuda'),'author')
-            pos_label2, neg_label2 = self.G_test_label[i][0].to('cuda'), self.G_test_label[i][1].to('cuda')
-            pos_score2 = self.model_to_explain[1](pos_label2, org_feat2)
-            neg_score2 = self.model_to_explain[1](neg_label2, org_feat2)
-            ori_pred2 = torch.cat((pos_score2.squeeze(1), neg_score2.squeeze(1)))
-            target2 = torch.sigmoid(ori_pred2).detach()
+                    org_feat2 = self.model_to_explain[0](self.G_test[i].to('cuda'),'author')
+                    pos_label2, neg_label2 = self.G_test_label[i][0].to('cuda'), self.G_test_label[i][1].to('cuda')
+                    pos_score2 = self.model_to_explain[1](pos_label2, org_feat2)
+                    neg_score2 = self.model_to_explain[1](neg_label2, org_feat2)
+                    ori_pred2 = torch.cat((pos_score2.squeeze(1), neg_score2.squeeze(1)))
+                    target2 = torch.sigmoid(ori_pred2).detach()
 
-            num_edges = self.G_test_label[i][0].num_edges()
-            edge_list = list(range(num_edges))
-            # how many edges to test?
-            edge_list = sample(edge_list, 1000)
-                
-            all_pred = []
-            target_list = []
+                    num_edges = self.G_test_label[i][0].num_edges()
+                    edge_list = list(range(num_edges))
+                    # how many edges to test?
+                    # edge_list = sample(edge_list, 1000)
+                    edge_list = edge_list[:1000]
+                        
+                    all_pred = []
+                    target_list = []
 
-            for n in edge_list:
-                n = int(n)
-                # print(n)
-                target_list.append(torch.round(target2[n]).detach().cpu().numpy())
+                    for n in edge_list:
+                        n = int(n)
+                        # print(n)
+                        target_list.append(torch.round(target2[n]).detach().cpu().numpy())
 
-                src, dst = self.G_test_label[i][0].edges()[0][n], self.G_test_label[i][0].edges()[1][n]
+                        src, dst = self.G_test_label[i][0].edges()[0][n], self.G_test_label[i][0].edges()[1][n]
 
-                sg, _ = dgl.khop_in_subgraph(self.G_test[i], {'author': (src,dst)}, k=2, store_ids=True)
+                        sg, _ = dgl.khop_in_subgraph(self.G_test[i], {'author': (src,dst)}, k=2, store_ids=True)
 
-                input_expl = self._create_explainer_input(sg, embed, src, dst).unsqueeze(0).to('cuda')
+                        input_expl = self._create_explainer_input(sg, embed, src, dst).unsqueeze(0).to('cuda')
 
-                sampling_weights = self.explainer_model(input_expl)
+                        sampling_weights = self.explainer_model(input_expl)
 
-                mask = self._sample_graph(sampling_weights, t, bias=self.sample_bias).squeeze().to('cuda')
+                        mask = self._sample_graph(sampling_weights, t, bias=self.sample_bias).squeeze().to('cuda')
 
-                for rate in rate_list:
+                        for rate in rate_list:
 
-                    new_mask = self._mask_graph_new(mask, rate) 
+                            new_mask = self._mask_graph_new(mask, rate) 
 
-                    h_m = self.model_to_explain[0](sg.to('cuda'),'author',edge_weight=new_mask)
+                            h_m = self.model_to_explain[0](sg.to('cuda'),'author',edge_weight=new_mask)
 
-                    src_h = h_m[torch.where(sg.ndata[dgl.NID]['author'] == src)]
-                    dst_h = h_m[torch.where(sg.ndata[dgl.NID]['author'] == dst)]
+                            src_h = h_m[torch.where(sg.ndata[dgl.NID]['author'] == src)]
+                            dst_h = h_m[torch.where(sg.ndata[dgl.NID]['author'] == dst)]
 
-                    all_h = torch.cat((src_h, dst_h),dim=1).to('cuda')
-                    pred = self.model_to_explain[1].fc2(F.relu(self.model_to_explain[1].fc1(all_h)))
+                            all_h = torch.cat((src_h, dst_h),dim=1).to('cuda')
+                            pred = self.model_to_explain[1].fc2(F.relu(self.model_to_explain[1].fc1(all_h)))
 
-                    all_pred.append(pred.squeeze().detach().cpu().numpy())
+                            all_pred.append(pred.squeeze().detach().cpu().numpy())
 
-            for n in edge_list:
-                n = int(n)
-                target_list.append(torch.round(target2[n+num_edges]).detach().cpu().numpy())
+                    for n in edge_list:
+                        n = int(n)
+                        target_list.append(torch.round(target2[n+num_edges]).detach().cpu().numpy())
 
-                src, dst = self.G_test_label[i][1].edges()[0][n], self.G_test_label[i][1].edges()[1][n]
+                        src, dst = self.G_test_label[i][1].edges()[0][n], self.G_test_label[i][1].edges()[1][n]
 
-                sg, _ = dgl.khop_in_subgraph(self.G_test[i], {'author': (src,dst)}, k=2, store_ids=True)
+                        sg, _ = dgl.khop_in_subgraph(self.G_test[i], {'author': (src,dst)}, k=2, store_ids=True)
 
-                input_expl = self._create_explainer_input(sg, embed, src, dst).unsqueeze(0).to('cuda')
+                        input_expl = self._create_explainer_input(sg, embed, src, dst).unsqueeze(0).to('cuda')
 
-                sampling_weights = self.explainer_model(input_expl)
+                        sampling_weights = self.explainer_model(input_expl)
 
-                mask = self._sample_graph(sampling_weights, t, bias=self.sample_bias).squeeze().to('cuda')
+                        mask = self._sample_graph(sampling_weights, t, bias=self.sample_bias).squeeze().to('cuda')
 
-                for rate in rate_list:
+                        for rate in rate_list:
 
-                    new_mask = self._mask_graph_new(mask, rate) 
+                            new_mask = self._mask_graph_new(mask, rate) 
 
-                    h_m = self.model_to_explain[0](sg.to('cuda'),'author',edge_weight=new_mask)
+                            h_m = self.model_to_explain[0](sg.to('cuda'),'author',edge_weight=new_mask)
 
-                    src_h = h_m[torch.where(sg.ndata[dgl.NID]['author'] == src)]
-                    dst_h = h_m[torch.where(sg.ndata[dgl.NID]['author'] == dst)]
+                            src_h = h_m[torch.where(sg.ndata[dgl.NID]['author'] == src)]
+                            dst_h = h_m[torch.where(sg.ndata[dgl.NID]['author'] == dst)]
 
-                    all_h = torch.cat((src_h, dst_h),dim=1).to('cuda')
-                    pred = self.model_to_explain[1].fc2(F.relu(self.model_to_explain[1].fc1(all_h)))
+                            all_h = torch.cat((src_h, dst_h),dim=1).to('cuda')
+                            pred = self.model_to_explain[1].fc2(F.relu(self.model_to_explain[1].fc1(all_h)))
 
-                    all_pred.append(pred.squeeze().detach().cpu().numpy())
+                            all_pred.append(pred.squeeze().detach().cpu().numpy())
 
-            for j in range(len(rate_list)):
-                print(rate_list[j])
-                preds = all_pred[j::len(rate_list)]
-                auc = roc_auc_score(target_list, preds)
-                ap = average_precision_score(target_list, preds)
-                # writer.add_scalar(f'loss/auc_{rate_list[i]}', auc, e)
-                # writer.add_scalar(f'loss/ap_{rate_list[i]}', ap, e)
-                print('auc',auc)
-                print('ap',ap)
+                    for j in range(len(rate_list)):
+                        print(rate_list[j])
+                        preds = all_pred[j::len(rate_list)]
+                        auc = roc_auc_score(target_list, preds)
+                        ap = average_precision_score(target_list, preds)
+                        writer.add_scalar(f'loss/auc_{rate_list[j]}', auc, e)
+                        writer.add_scalar(f'loss/ap_{rate_list[j]}', ap, e)
+                        print('auc',auc)
+                        print('ap',ap)
