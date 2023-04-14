@@ -13,7 +13,7 @@ from random import sample
 from utils.pytorchtools import EarlyStopping
 
 from torch.utils.tensorboard import SummaryWriter 
-writer = SummaryWriter('/home/jiazhengli/xdgnn/HTGNN/output/covid_es')
+writer = SummaryWriter('/home/jiazhengli/xdgnn/HTGNN/output/covid_es_pg')
 # writer = SummaryWriter('/home/jiazhengli/xdgnn/HTGNN/output/covid_5')
 
 class PGExplainer():
@@ -54,7 +54,7 @@ class PGExplainer():
         self.sample_bias = sample_bias
         self.node_emb = 8
 
-        self.expl_embedding = 8+8+8 +4+8
+        self.expl_embedding = 8+8+8# +4+8
 
     def create_1d_absolute_sin_cos_embedding(self, pos_len, dim):
         assert dim % 2 == 0, "wrong dimension!"
@@ -109,9 +109,9 @@ class PGExplainer():
             nemb = F.normalize(nemb,dim=1)
 
             # with none
-            # eemb = torch.cat([srcemb,dstemb,nemb],dim=1)
+            eemb = torch.cat([srcemb,dstemb,nemb],dim=1)
             # with all
-            eemb = torch.cat([srcemb,dstemb,posemb,hetemb,nemb],dim=1)
+            # eemb = torch.cat([srcemb,dstemb,posemb,hetemb,nemb],dim=1)
 
             allemb = torch.cat([allemb,eemb],dim=0)
 
@@ -212,8 +212,6 @@ class PGExplainer():
                 # shape of mask: num of edge, 0-1 continuous number
                 #masked_pred = self.model_to_explain(feats, graph, edge_weights=mask)
 
-                # masked_sg = self._mask_graph(sg, mask) 
-
                 # new_mask = self._mask_graph_new(mask, 0.05)
 
                 h = self.model_to_explain[0](sg.to('cuda'),'state',edge_weight=mask)
@@ -251,7 +249,7 @@ class PGExplainer():
         model_out_path = '/home/jiazhengli/xdgnn/HTGNN/output/explainer_covid'
 
         # Make it larger??
-        early_stopping = EarlyStopping(patience=20, verbose=True, path=f'{model_out_path}/checkpoint_covid_es.pt')
+        early_stopping = EarlyStopping(patience=20, verbose=True, path=f'{model_out_path}/checkpoint_covid_es_pg.pt')
 
         for e in tqdm(range(0, self.epochs)):
 
@@ -344,8 +342,8 @@ class PGExplainer():
 
             # if (e+1) % 10 == 0:
 
-        # test
-        self.explainer_model.load_state_dict(torch.load(f'{model_out_path}/checkpoint_covid_es.pt'))
+                # test
+        self.explainer_model.load_state_dict(torch.load(f'{model_out_path}/checkpoint_covid_es_pg.pt'))
         self.explainer_model.eval()
         all_results = np.array([])
         for i in range(len(self.G_test)):

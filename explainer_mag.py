@@ -21,7 +21,7 @@ from model.myPGExplainer_mag import PGExplainer
 
 glist, label_dict = load_graphs('data/ogbn_graphs.bin')
 device = torch.device('cuda')
-time_window = 3
+time_window = 5
 
 train_feats, train_labels, val_feats, val_labels, test_feats, test_labels = load_MAG_data(glist, time_window, device)
 
@@ -31,7 +31,7 @@ auc_list, ap_list = [], []
 htgnn = HTGNN(graph=graph_atom, n_inp=128, n_hid=32, n_layers=2, n_heads=1, time_window=time_window, norm=True, device=device)
 predictor = LinkPredictor(n_inp=32, n_classes=1)
 model = nn.Sequential(htgnn, predictor).to(device)
-model.load_state_dict(torch.load('/home/jiazhengli/xdgnn/HTGNN/output/OGBN-MAG/checkpoint_HTGNN_0.pt'))
+model.load_state_dict(torch.load('/home/jiazhengli/xdgnn/HTGNN/output/OGBN-MAG/checkpoint_HTGNN_0_w5.pt'))
 
 
 explainer = PGExplainer(model_to_explain = model, G_train = train_feats, G_train_label = train_labels, 
