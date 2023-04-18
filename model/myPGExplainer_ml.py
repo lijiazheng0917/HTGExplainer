@@ -11,8 +11,7 @@ from random import sample
 from utils.pytorchtools import EarlyStopping
 
 from torch.utils.tensorboard import SummaryWriter 
-writer = SummaryWriter('/home/jiazhengli/xdgnn/HTGNN/output/mag_test_es_pg')
-
+writer = SummaryWriter('/home/jiazhengli/xdgnn/HTGNN/output/ml_es_pg')
 
 class PGExplainer():
     """
@@ -34,7 +33,7 @@ class PGExplainer():
     :function train: train the explainer
     :function explain: search for the subgraph which contributes most to the clasification decision of the model-to-be-explained.
     """
-    def __init__(self, model_to_explain, G_train, G_train_label, G_val, G_val_label, G_test, G_test_label, time_win, epochs=200, lr=0.001, temp=(5.0, 2.0), reg_coefs=(0.0001, 0.01),sample_bias=0):
+    def __init__(self, model_to_explain, G_train, G_train_label, G_val, G_val_label, G_test, G_test_label, time_win, epochs=50, lr=0.001, temp=(5.0, 2.0), reg_coefs=(0.0001, 0.01),sample_bias=0):
         super().__init__()
 
         self.model_to_explain = model_to_explain
@@ -53,7 +52,7 @@ class PGExplainer():
         self.sample_bias = sample_bias
         self.node_emb = 8
 
-        self.expl_embedding = 32+32+32+32# +32+7
+        self.expl_embedding = 32+32+32+32# +32+4
 
     def create_1d_absolute_sin_cos_embedding(self, pos_len, dim):
         assert dim % 2 == 0, "wrong dimension!"
@@ -89,14 +88,15 @@ class PGExplainer():
         
 
         pos_emb = self.create_1d_absolute_sin_cos_embedding(pos_len=self.tw, dim=32)
-        het = {'authorinstitution':torch.tensor([1,0,0,0,0,0,0]),'authorpaper':torch.tensor([0,1,0,0,0,0,0]), \
-               'field_of_studypaper':torch.tensor([0,0,1,0,0,0,0]),'institutionauthor':torch.tensor([0,0,0,1,0,0,0]), \
-               'paperpaper':torch.tensor([0,0,0,0,1,0,0]),'paperfield_of_study':torch.tensor([0,0,0,0,0,1,0]), \
-               'paperauthor':torch.tensor([0,0,0,0,0,0,1])}
-        het1 = {'authorinstitution':torch.tensor(0),'authorpaper':torch.tensor(1), \
-               'field_of_studypaper':torch.tensor(2),'institutionauthor':torch.tensor(3), \
-               'paperpaper':torch.tensor(4),'paperfield_of_study':torch.tensor(5), \
-               'paperauthor':torch.tensor(6)}
+        # het = {'authorinstitution':torch.tensor([1,0,0,0,0,0,0]),'authorpaper':torch.tensor([0,1,0,0,0,0,0]), \
+        #        'field_of_studypaper':torch.tensor([0,0,1,0,0,0,0]),'institutionauthor':torch.tensor([0,0,0,1,0,0,0]), \
+        #        'paperpaper':torch.tensor([0,0,0,0,1,0,0]),'paperfield_of_study':torch.tensor([0,0,0,0,0,1,0]), \
+        #        'paperauthor':torch.tensor([0,0,0,0,0,0,1])}
+        het = {'moviemovie':torch.tensor([1,0,0,0]),'movieuser':torch.tensor([0,1,0,0]),'usermovie':torch.tensor([0,0,1,0]),'useruser':torch.tensor([0,0,0,1])}
+        # het1 = {'authorinstitution':torch.tensor(0),'authorpaper':torch.tensor(1), \
+        #        'field_of_studypaper':torch.tensor(2),'institutionauthor':torch.tensor(3), \
+        #        'paperpaper':torch.tensor(4),'paperfield_of_study':torch.tensor(5), \
+        #        'paperauthor':torch.tensor(6)}
 
         allemb = torch.tensor([]).to('cuda')
         for srctype, etype, dsttype in sg.canonical_etypes:
@@ -105,8 +105,8 @@ class PGExplainer():
             new_dst = sg.ndata[dgl.NID][dsttype][dst.long()]
             srcemb = embed[srctype][new_src.long()] # edge num, embsize
             dstemb = embed[dsttype][new_dst.long()]
-            nemb1 = embed['author'][node1].repeat(len(src), 1)
-            nemb2 = embed['author'][node2].repeat(len(src), 1)
+            nemb1 = embed['user'][node1].repeat(len(src), 1)
+            nemb2 = embed['movie'][node2].repeat(len(src), 1)
             posemb = pos_emb[int(etype[-1])].repeat(len(src), 1).to('cuda')
             hetemb = het[srctype+dsttype].repeat(len(src), 1).to('cuda')
             # hetemb = het_emb(het1[srctype+dsttype]).repeat(len(src), 1).to('cuda')
@@ -171,35 +171,7 @@ class PGExplainer():
 
         return cce_loss + mask_ent_loss + size_loss, cce_loss, mask_ent_loss, size_loss
 
-    # def _mask_graph(self, sg, mask):
-    #     l = {}
-    #     k = 0
-    #     for srctype, etype, dsttype in sg.canonical_etypes:
-    #         src, dst = sg.edges(etype=etype)
-    #         # len(src)
-    #         for j in range(k,k+len(src)):
-    #             l[j] = [etype,j-k,src[j-k],dst[j-k]]
-    #         k += len(src)
 
-    #     _, idx = torch.sort(mask,descending=True)
-    #     top_idx = idx[:int(0.1*len(idx))]
-
-    #     masked_sg = sg
-
-    #     for srctype, etype, dsttype in sg.canonical_etypes:
-    #         eids = sg.edges(form='eid',etype=etype)
-    #         masked_sg = dgl.remove_edges(masked_sg,eids,etype)
-
-    #     # c = {type:0 for type in sg.etypes}
-
-    #     for i in range(len(top_idx)):
-    #         type = l[top_idx[i].item()][0]
-    #         src = l[top_idx[i].item()][2]
-    #         dst = l[top_idx[i].item()][3]
-    #         masked_sg.add_edges(src,dst,etype=type)
-
-    #     return masked_sg
-    
     def _mask_graph_new(self, mask, rate):
         
         new_mask = torch.zeros(mask.shape[0]).to('cuda')
@@ -299,9 +271,9 @@ class PGExplainer():
         optimizer = Adam(self.explainer_model.parameters(), lr=self.lr, weight_decay=1e-4)
         temp_schedule = lambda e: self.temp[0]*((self.temp[1]/self.temp[0])**(e/self.epochs))
 
-        model_out_path = '/home/jiazhengli/xdgnn/HTGNN/output/explainer_mag'
+        model_out_path = '/home/jiazhengli/xdgnn/HTGNN/output/explainer_ml'
         # early_stopping
-        early_stopping = EarlyStopping(patience=20, verbose=True, path=f'{model_out_path}/checkpoint_mag_es.pt')
+        early_stopping = EarlyStopping(patience=20, verbose=True, path=f'{model_out_path}/checkpoint_ml_es.pt')
 
         size_reg = self.reg_coefs[0]
         entropy_reg = self.reg_coefs[1]
@@ -320,10 +292,14 @@ class PGExplainer():
 
             for i in range(len(self.G_train)):
 
-                org_feat = self.model_to_explain[0](self.G_train[i].to('cuda'),'author')
-                pos_label, neg_label = self.G_train_label[i][0].to('cuda'), self.G_train_label[i][1].to('cuda')
-                pos_score = self.model_to_explain[1](pos_label, org_feat)
-                neg_score = self.model_to_explain[1](neg_label, org_feat)
+                h_u = self.model_to_explain[0](self.G_train[i].to('cuda'), 'user')
+                h_m = self.model_to_explain[0](self.G_train[i].to('cuda'), 'movie')
+
+                pos_u, pos_m = self.G_train_label[i][0][0], self.G_train_label[i][0][1]
+                neg_u, neg_m = self.G_train_label[i][1][0], self.G_train_label[i][1][1]
+
+                pos_score, neg_score = self.model_to_explain[1](h_u, h_m, pos_u, pos_m, neg_u, neg_m)
+
                 ori_pred = torch.cat((pos_score.squeeze(1), neg_score.squeeze(1)))
                 target = torch.sigmoid(ori_pred).detach()
 
@@ -333,9 +309,9 @@ class PGExplainer():
                     embed[ntype] = self.model_to_explain[0](self.G_train[i].to('cuda'), ntype).detach()
 
                 
-                num = self.G_train_label[i][0].num_edges()
-                batchs = num // 32
-                start = random.choice(list(range(batchs-5)))
+                num = len(self.G_train_label[i][0][0])
+                # batchs = num // 32
+                # start = random.choice(list(range(batchs-5)))
                 # batchs = 3
                 all_loss = 0
                 all_closs = 0
@@ -344,6 +320,7 @@ class PGExplainer():
 
                 # change here
                 for j in range(0, 10):
+                # for j in range(start, start + 5):
                     optimizer.zero_grad()
                     # loss = torch.FloatTensor([0]).detach().to('cuda')
                     loss = 0
@@ -351,19 +328,18 @@ class PGExplainer():
                     mloss = 0
                     sloss = 0
 
-                    lo = 8*j
+                    lo = 16*j
                     # hi = min(16*(j+1),self.G_train_label[i][0].num_edges())
-                    hi = 8*(j+1)
+                    hi = 16*(j+1)
                     # print(lo,hi)
                     for n in range(lo, hi):
-
                         n = int(n)
                         # print(n)
                         flag = random.choice([0,1])
 
-                        src, dst = self.G_train_label[i][flag].edges()[0][n], self.G_train_label[i][flag].edges()[1][n]
+                        src, dst = self.G_train_label[i][flag][0][n].to('cuda'), self.G_train_label[i][flag][1][n].to('cuda')
 
-                        sg, _ = dgl.khop_in_subgraph(self.G_train[i], {'author': (src,dst)}, k=2, store_ids=True)
+                        sg, _ = dgl.khop_in_subgraph(self.G_train[i], {'user': src,'movie':dst}, k=2, store_ids=True)
 
                         input_expl = self._create_explainer_input(sg, embed, src, dst).unsqueeze(0).to('cuda')
 
@@ -371,10 +347,11 @@ class PGExplainer():
 
                         mask = self._sample_graph(sampling_weights, t, bias=self.sample_bias).squeeze().to('cuda')
 
-                        h_m = self.model_to_explain[0](sg.to('cuda'),'author',edge_weight=mask)
+                        h_m_u = self.model_to_explain[0](sg.to('cuda'),'user',edge_weight=mask)
+                        h_m_m = self.model_to_explain[0](sg.to('cuda'),'movie',edge_weight=mask)
 
-                        src_h = h_m[torch.where(sg.ndata[dgl.NID]['author'] == src)]
-                        dst_h = h_m[torch.where(sg.ndata[dgl.NID]['author'] == dst)]
+                        src_h = h_m_u[torch.where(sg.ndata[dgl.NID]['user'] == src)]
+                        dst_h = h_m_m[torch.where(sg.ndata[dgl.NID]['movie'] == dst)]
 
                         all_h = torch.cat((src_h, dst_h),dim=1).to('cuda')
                         pred = self.model_to_explain[1].fc2(F.relu(self.model_to_explain[1].fc1(all_h)))
@@ -411,7 +388,6 @@ class PGExplainer():
                 epoch_mloss += all_mloss
                 epoch_sloss += all_sloss
 
-
             writer.add_scalar('loss/all_loss', epoch_loss, e)
             writer.add_scalar('loss/closs', epoch_closs, e)
             writer.add_scalar('loss/mloss', epoch_mloss, e)
@@ -419,21 +395,21 @@ class PGExplainer():
 
             torch.cuda.empty_cache()
         
-            if e>50:
-                eval_loss = self.evaluate(self.explainer_model, self.G_val, self.G_val_label, t)
-                early_stopping(eval_loss, self.explainer_model)
-                if early_stopping.early_stop:
-                    print("Early stopping", e)
-                    break
+            # if e>50:
+            #     eval_loss = self.evaluate(self.explainer_model, self.G_val, self.G_val_label, t)
+            #     early_stopping(eval_loss, self.explainer_model)
+            #     if early_stopping.early_stop:
+            #         print("Early stopping", e)
+            #         break
 
             
             # if (e+1) % 5 == 0:
 
 
         # testing
-        # t = temp_schedule(100)
+        # t = temp_schedule(e)
 
-        self.explainer_model.load_state_dict(torch.load(f'{model_out_path}/checkpoint_mag_es.pt'))
+        # self.explainer_model.load_state_dict(torch.load(f'{model_out_path}/checkpoint_ml_es.pt'))
         self.explainer_model.eval()
         # self.het_emb.eval()
         all_pred = []
@@ -443,27 +419,31 @@ class PGExplainer():
             for ntype in self.G_test[i].ntypes:
                 embed[ntype] = self.model_to_explain[0](self.G_test[i].to('cuda'), ntype).detach()
 
-            org_feat2 = self.model_to_explain[0](self.G_test[i].to('cuda'),'author')
-            pos_label2, neg_label2 = self.G_test_label[i][0].to('cuda'), self.G_test_label[i][1].to('cuda')
-            pos_score2 = self.model_to_explain[1](pos_label2, org_feat2)
-            neg_score2 = self.model_to_explain[1](neg_label2, org_feat2)
-            ori_pred2 = torch.cat((pos_score2.squeeze(1), neg_score2.squeeze(1)))
+            h_u = self.model_to_explain[0](self.G_test[i].to('cuda'), 'user')
+            h_m = self.model_to_explain[0](self.G_test[i].to('cuda'), 'movie')
+
+            pos_u, pos_m = self.G_test_label[i][0][0], self.G_test_label[i][0][1]
+            neg_u, neg_m = self.G_test_label[i][1][0], self.G_test_label[i][1][1]
+
+            pos_score, neg_score = self.model_to_explain[1](h_u, h_m, pos_u, pos_m, neg_u, neg_m)
+
+            ori_pred2 = torch.cat((pos_score.squeeze(1), neg_score.squeeze(1)))
             target2 = torch.sigmoid(ori_pred2).detach()
 
-            num_edges = self.G_test_label[i][0].num_edges()
+            num_edges = len(self.G_test_label[i][0][0])
             edge_list = list(range(num_edges))
             # how many edges to test?
             # edge_list = sample(edge_list, 1000)
-            edge_list = edge_list[:1000]
-
+            edge_list = edge_list[:500]
+ 
             for n in edge_list:
                 n = int(n)
                 # print(n)
                 target_list.append(torch.round(target2[n]).detach().cpu().numpy())
 
-                src, dst = self.G_test_label[i][0].edges()[0][n], self.G_test_label[i][0].edges()[1][n]
+                src, dst = self.G_test_label[i][0][0][n].to('cuda'), self.G_test_label[i][0][1][n].to('cuda')
 
-                sg, _ = dgl.khop_in_subgraph(self.G_test[i], {'author': (src,dst)}, k=2, store_ids=True)
+                sg, _ = dgl.khop_in_subgraph(self.G_test[i], {'user': src,'movie':dst}, k=2, store_ids=True)
 
                 input_expl = self._create_explainer_input(sg, embed, src, dst).unsqueeze(0).to('cuda')
 
@@ -475,10 +455,11 @@ class PGExplainer():
 
                     new_mask = self._mask_graph_new(mask, rate) 
 
-                    h_m = self.model_to_explain[0](sg.to('cuda'),'author',edge_weight=new_mask)
+                    h_m_u = self.model_to_explain[0](sg.to('cuda'),'user',edge_weight=new_mask)
+                    h_m_m = self.model_to_explain[0](sg.to('cuda'),'movie',edge_weight=new_mask)
 
-                    src_h = h_m[torch.where(sg.ndata[dgl.NID]['author'] == src)]
-                    dst_h = h_m[torch.where(sg.ndata[dgl.NID]['author'] == dst)]
+                    src_h = h_m_u[torch.where(sg.ndata[dgl.NID]['user'] == src)]
+                    dst_h = h_m_m[torch.where(sg.ndata[dgl.NID]['movie'] == dst)]
 
                     all_h = torch.cat((src_h, dst_h),dim=1).to('cuda')
                     pred = self.model_to_explain[1].fc2(F.relu(self.model_to_explain[1].fc1(all_h)))
@@ -489,9 +470,9 @@ class PGExplainer():
                 n = int(n)
                 target_list.append(torch.round(target2[n+num_edges]).detach().cpu().numpy())
 
-                src, dst = self.G_test_label[i][1].edges()[0][n], self.G_test_label[i][1].edges()[1][n]
+                src, dst = self.G_test_label[i][1][0][n].to('cuda'), self.G_test_label[i][1][1][n].to('cuda')
 
-                sg, _ = dgl.khop_in_subgraph(self.G_test[i], {'author': (src,dst)}, k=2, store_ids=True)
+                sg, _ = dgl.khop_in_subgraph(self.G_test[i], {'user': src,'movie':dst}, k=2, store_ids=True)
 
                 input_expl = self._create_explainer_input(sg, embed, src, dst).unsqueeze(0).to('cuda')
 
@@ -503,10 +484,11 @@ class PGExplainer():
 
                     new_mask = self._mask_graph_new(mask, rate) 
 
-                    h_m = self.model_to_explain[0](sg.to('cuda'),'author',edge_weight=new_mask)
+                    h_m_u = self.model_to_explain[0](sg.to('cuda'),'user',edge_weight=new_mask)
+                    h_m_m = self.model_to_explain[0](sg.to('cuda'),'movie',edge_weight=new_mask)
 
-                    src_h = h_m[torch.where(sg.ndata[dgl.NID]['author'] == src)]
-                    dst_h = h_m[torch.where(sg.ndata[dgl.NID]['author'] == dst)]
+                    src_h = h_m_u[torch.where(sg.ndata[dgl.NID]['user'] == src)]
+                    dst_h = h_m_m[torch.where(sg.ndata[dgl.NID]['movie'] == dst)]
 
                     all_h = torch.cat((src_h, dst_h),dim=1).to('cuda')
                     pred = self.model_to_explain[1].fc2(F.relu(self.model_to_explain[1].fc1(all_h)))

@@ -101,6 +101,9 @@ class HTGNNLayer(nn.Module):
         self.norm      = norm
         self.dropout   = dropout
 
+        # for srctype, etype, dsttype in graph.canonical_etypes:
+        #     print(srctype, etype, dsttype)
+
         # intra reltion aggregation modules
         self.intra_rel_agg = nn.ModuleDict({
             etype: GraphConv(n_inp, n_hid, norm='both',weight=True,allow_zero_in_degree=True)
@@ -162,6 +165,8 @@ class HTGNNLayer(nn.Module):
 
 
         for stype, etype, dtype in graph.canonical_etypes:
+
+            # print(stype, etype, dtype)
 
             rel_graph = graph[stype, etype, dtype]
             reltype = etype.split('_')[0]
@@ -297,6 +302,26 @@ class LinkPredictor(nn.Module):
             graph.apply_edges(self.apply_edges)
         
             return graph.edata['score']
+        
+class LinkPredictor_ml(nn.Module):
+    def __init__(self, n_inp: int, n_classes: int):
+        """
+    
+        :param n_inp      : int, input dimension
+        :param n_classes  : int, number of classes
+        """
+        super().__init__()
+        self.fc1 = nn.Linear(n_inp * 2, n_inp)
+        self.fc2 = nn.Linear(n_inp, n_classes)
+
+    def forward(self,h_u, h_m, pos_u, pos_m, neg_u, neg_m):
+        # h_u[pos_u]
+        # h_m[pos_m]
+        emb = torch.cat((h_u[pos_u], h_m[pos_m]), dim=1)
+        pos_score = self.fc2(F.relu(self.fc1(emb)))
+        emb = torch.cat((h_u[neg_u], h_m[neg_m]), dim=1)
+        neg_score = self.fc2(F.relu(self.fc1(emb)))
+        return pos_score, neg_score
 
 
 class NodePredictor(nn.Module):

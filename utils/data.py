@@ -1,6 +1,9 @@
 import dgl
 import torch
 from utils.utils import mp2vec_feat
+import pandas as pd
+import numpy as np
+from datetime import datetime
 
 dgl.seed(0)
 torch.manual_seed(0)
@@ -156,4 +159,80 @@ def load_MAG_data(glist, time_window, device):
                 train_feats.append(G_feat)
                 train_labels.append((pos_label, neg_label))
                 
+    return train_feats, train_labels, val_feats, val_labels, test_feats, test_labels
+
+def load_ML_data(time_window, device):
+    mm = pd.read_csv('/home/jiazhengli/xdgnn/HTGNN/data/Movielens/movie_movie(knn).dat', sep = "\t", header=None,names=['m1', 'm2','score'])
+    uu = pd.read_csv('/home/jiazhengli/xdgnn/HTGNN/data/Movielens/user_user(knn).dat', sep = "\t", header=None,names=['u1', 'u2','score'])
+    um = pd.read_csv('/home/jiazhengli/xdgnn/HTGNN/data/Movielens/user_movie.dat', sep = "\t", header=None,names=['user', 'movie','rating','time'])
+
+    mmi = np.vstack((mm.m1.values,mm.m2.values))
+    uui = np.vstack((uu.u1.values,uu.u2.values))
+    mmi = mmi - 1
+    uui = uui - 1
+
+    um = um[um.rating>=3]
+
+    um['year'] = um['time'].map(lambda x : datetime.fromtimestamp(x).year) 
+    um['month'] = um['time'].map(lambda x : datetime.fromtimestamp(x).month)
+    um['day'] = um['time'].map(lambda x : datetime.fromtimestamp(x).day)
+    um['t'] = (um['year'] - 1997) * 365 + um['month'] * 30 + um['day']
+    um['t'] = (um['t'] // 10)
+    um.t = um.t-28
+    times = np.unique(um.t)
+    um.user = um.user - 1
+    um.movie = um.movie - 1
+
+    graph_data = {}
+    for t in np.unique(um.t):
+        um_t = um[um.t == t]
+        u_t = um_t.user.values
+        m_t = um_t.movie.values
+
+        graph_data[('user',f'u-m_t{t}','movie')] = (torch.tensor(u_t), torch.tensor(m_t))
+        graph_data[('movie',f'm-u_t{t}','user')] = (torch.tensor(m_t), torch.tensor(u_t))
+        graph_data[('user',f'u-u_t{t}','user')] = (torch.tensor(uui[0]), torch.tensor(uui[1]))
+        graph_data[('movie',f'm-m_t{t}','movie')] = (torch.tensor(mmi[0]), torch.tensor(mmi[1]))
+    graph = dgl.heterograph(graph_data).to(device)
+
+    subgraphs = []
+    labels = []
+    window = 8
+
+    user_feat = torch.randn((943,64)).to(device)
+    movie_feat = torch.randn((1682,64)).to(device)
+
+    for i in range(len(times)-window):
+        ts = times[i:i+window]
+        sg_list = [f'u-m_t{t}' for t in ts] + [f'u-u_t{t}' for t in ts] + [f'm-m_t{t}' for t in ts] + [f'm-u_t{t}' for t in ts]
+        sg = graph.edge_type_subgraph(sg_list)
+        
+        graph_data = {}
+        for srctype, etype, dsttype in sg.canonical_etypes:
+            src, dst = sg.edges(etype=(srctype, etype, dsttype))
+            a, b = etype.split('_')[0], etype.split('_')[1]
+            # print(srctype, etype, dsttype)
+            # print(a)
+            # print(b)
+            graph_data[(srctype,a +'_'+ b[0] + str(int(b[1:])-ts[0]),dsttype)] = (src, dst)
+        sg_new = dgl.heterograph(graph_data).to(device)
+
+        for t in range(window):
+            sg_new.ndata[f't{t}'] = {'user': user_feat[sg_new.nodes('user')] ,'movie': movie_feat[sg_new.nodes('movie')]}
+
+        subgraphs.append(sg_new)
+        label_t = np.max(ts) + 1
+        # label_g = graph.edge_type_subgraph([f'u-m_t{label_t}', f'm-u_t{label_t}',f'u-u_t{label_t}',f'm-m_t{label_t}'])
+        pos = graph.edges(etype=('user', f'u-m_t{label_t}', 'movie'))
+        neg1 = torch.from_numpy(np.random.randint(0, graph.num_nodes('user')-1, [len(pos[0])]))
+        neg2 = torch.from_numpy(np.random.randint(0, graph.num_nodes('movie')-1, [len(pos[0])]))
+        neg = (neg1,neg2)
+        label = (pos,neg)
+        labels.append(label)
+
+    train_feats, train_labels, val_feats, val_labels, test_feats, test_labels = \
+    subgraphs[:10], labels[:10], subgraphs[10:13], labels[10:13], subgraphs[13:], labels[13:]
+
+    # print(train_feats[0].ndata)
+
     return train_feats, train_labels, val_feats, val_labels, test_feats, test_labels
