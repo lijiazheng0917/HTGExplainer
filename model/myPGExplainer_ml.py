@@ -402,6 +402,8 @@ class PGExplainer():
             #         print("Early stopping", e)
             #         break
 
+            if (e+1) / 10 == 0:
+                torch.save(self.explainer_model.state_dict(), f'{model_out_path}/checkpoint_ml_es.pt')
             
             # if (e+1) % 5 == 0:
 

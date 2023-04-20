@@ -11,7 +11,7 @@ from random import sample
 from utils.pytorchtools import EarlyStopping
 
 from torch.utils.tensorboard import SummaryWriter 
-writer = SummaryWriter('/home/jiazhengli/xdgnn/HTGNN/output/mag_test_es_pg')
+writer = SummaryWriter('/home/jiazhengli/xdgnn/HTGNN/output/mag_es_pg')
 
 
 class PGExplainer():

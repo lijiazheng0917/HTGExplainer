@@ -345,15 +345,18 @@ class PGExplainer():
             # if (e+1) % 10 == 0:
 
         # test
+        mseloss = nn.MSELoss()
         self.explainer_model.load_state_dict(torch.load(f'{model_out_path}/checkpoint_covid_es.pt'))
         self.explainer_model.eval()
-        all_results = np.array([])
+        all_results1 = np.array([])
+        all_results2 = np.array([])
         for i in range(len(self.G_test)):
             embed = {}
             for ntype in self.G_test[i].ntypes:
                 embed[ntype] = self.model_to_explain[0](self.G_test[i].to('cuda'), ntype).detach()
             num_of_states = self.G_test[i].number_of_nodes('state')
             mae = []
+            rmse = []
             for n in range(num_of_states):
                 n = int(n)
                 sg, _ = dgl.khop_in_subgraph(self.G_test[i], {'state': n}, k=2, store_ids=True)
@@ -382,14 +385,19 @@ class PGExplainer():
                     masked_pred = self.model_to_explain[1](h)
                     masked_pred = masked_pred[torch.where(sg.ndata[dgl.NID]['state'] == n)]
 
-                    l = F.l1_loss(original_pred, masked_pred)
-                    # print(l)
-                    mae.append(l.item()) 
+                    l1 = F.l1_loss(original_pred, masked_pred)
+                    l2 = mseloss(original_pred, masked_pred)
+                    mae.append(l1.item()) 
+                    rmse.append(l2.item())
 
-            results = np.mean(np.array(mae).reshape((-1,len(rate_list))),axis=0)
+            results1 = np.mean(np.array(mae).reshape((-1,len(rate_list))),axis=0)
+            results2 = np.mean(np.array(rmse).reshape((-1,len(rate_list))),axis=0)
 
-            all_results = np.concatenate((all_results,results))
-        all_results = np.mean(all_results.reshape((-1,len(rate_list))),axis=0)
-        for i in range(len(rate_list)):
-            writer.add_scalar(f'loss/testmae_{rate_list[i]}', results[i], e)
-        print(all_results)
+            all_results1 = np.concatenate((all_results1,results1))
+            all_results2 = np.concatenate((all_results2,results2))
+        all_results1 = np.mean(all_results1.reshape((-1,len(rate_list))),axis=0)
+        all_results2 = np.mean(all_results2.reshape((-1,len(rate_list))),axis=0)
+        # for i in range(len(rate_list)):
+        #   writer.add_scalar(f'loss/testmae_{rate_list[i]}', results[i], e)
+        print(all_results1)
+        print(all_results2)
