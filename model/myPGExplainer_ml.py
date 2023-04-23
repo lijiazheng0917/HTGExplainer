@@ -9,6 +9,7 @@ from sklearn.metrics import roc_auc_score, average_precision_score, accuracy_sco
 import random
 from random import sample
 from utils.pytorchtools import EarlyStopping
+from utils.utils import compute_metric
 
 from torch.utils.tensorboard import SummaryWriter 
 writer = SummaryWriter('/home/jiazhengli/xdgnn/HTGNN/output/ml_es_pg')
@@ -33,7 +34,7 @@ class PGExplainer():
     :function train: train the explainer
     :function explain: search for the subgraph which contributes most to the clasification decision of the model-to-be-explained.
     """
-    def __init__(self, model_to_explain, G_train, G_train_label, G_val, G_val_label, G_test, G_test_label, time_win, epochs=50, lr=0.001, temp=(5.0, 2.0), reg_coefs=(0.0001, 0.01),sample_bias=0):
+    def __init__(self, model_to_explain, G_train, G_train_label, G_val, G_val_label, G_test, G_test_label, time_win, epochs=100, lr=0.0005, temp=(5.0, 2.0), reg_coefs=(0.0001, 0.01),sample_bias=0):
         super().__init__()
 
         self.model_to_explain = model_to_explain
@@ -52,7 +53,7 @@ class PGExplainer():
         self.sample_bias = sample_bias
         self.node_emb = 8
 
-        self.expl_embedding = 32+32+32+32# +32+4
+        self.expl_embedding = 32+32+32+32 +32+4
 
     def create_1d_absolute_sin_cos_embedding(self, pos_len, dim):
         assert dim % 2 == 0, "wrong dimension!"
@@ -88,15 +89,8 @@ class PGExplainer():
         
 
         pos_emb = self.create_1d_absolute_sin_cos_embedding(pos_len=self.tw, dim=32)
-        # het = {'authorinstitution':torch.tensor([1,0,0,0,0,0,0]),'authorpaper':torch.tensor([0,1,0,0,0,0,0]), \
-        #        'field_of_studypaper':torch.tensor([0,0,1,0,0,0,0]),'institutionauthor':torch.tensor([0,0,0,1,0,0,0]), \
-        #        'paperpaper':torch.tensor([0,0,0,0,1,0,0]),'paperfield_of_study':torch.tensor([0,0,0,0,0,1,0]), \
-        #        'paperauthor':torch.tensor([0,0,0,0,0,0,1])}
+
         het = {'moviemovie':torch.tensor([1,0,0,0]),'movieuser':torch.tensor([0,1,0,0]),'usermovie':torch.tensor([0,0,1,0]),'useruser':torch.tensor([0,0,0,1])}
-        # het1 = {'authorinstitution':torch.tensor(0),'authorpaper':torch.tensor(1), \
-        #        'field_of_studypaper':torch.tensor(2),'institutionauthor':torch.tensor(3), \
-        #        'paperpaper':torch.tensor(4),'paperfield_of_study':torch.tensor(5), \
-        #        'paperauthor':torch.tensor(6)}
 
         allemb = torch.tensor([]).to('cuda')
         for srctype, etype, dsttype in sg.canonical_etypes:
@@ -119,9 +113,9 @@ class PGExplainer():
             nemb2 = F.normalize(nemb2,dim=1)
 
             # with none
-            eemb = torch.cat([srcemb,dstemb,nemb1,nemb2],dim=1)
+            # eemb = torch.cat([srcemb,dstemb,nemb1,nemb2],dim=1)
             # with all
-            # eemb = torch.cat([srcemb,dstemb,posemb,hetemb,nemb1,nemb2],dim=1)
+            eemb = torch.cat([srcemb,dstemb,posemb,hetemb,nemb1,nemb2],dim=1)
 
             allemb = torch.cat([allemb,eemb],dim=0)
 
@@ -190,26 +184,31 @@ class PGExplainer():
             for ntype in G_val[i].ntypes:
                 embed[ntype] = self.model_to_explain[0](G_val[i].to('cuda'), ntype).detach()
 
-            org_feat2 = self.model_to_explain[0](self.G_val[i].to('cuda'),'author')
-            pos_label2, neg_label2 = G_val_label[i][0].to('cuda'), G_val_label[i][1].to('cuda')
-            pos_score2 = self.model_to_explain[1](pos_label2, org_feat2)
-            neg_score2 = self.model_to_explain[1](neg_label2, org_feat2)
-            ori_pred2 = torch.cat((pos_score2.squeeze(1), neg_score2.squeeze(1)))
-            target2 = torch.sigmoid(ori_pred2).detach()
+            h_u = self.model_to_explain[0](self.G_val[i].to('cuda'), 'user')
+            h_m = self.model_to_explain[0](self.G_val[i].to('cuda'), 'movie')
 
-            num_edges = G_val_label[i][0].num_edges()
+            pos_u, pos_m = self.G_val_label[i][0][0], self.G_val_label[i][0][1]
+            neg_u, neg_m = self.G_val_label[i][1][0], self.G_val_label[i][1][1]
+
+            pos_score, neg_score = self.model_to_explain[1](h_u, h_m, pos_u, pos_m, neg_u, neg_m)
+
+            ori_pred = torch.cat((pos_score.squeeze(1), neg_score.squeeze(1)))
+            target2 = torch.sigmoid(ori_pred).detach()
+
+
+            num_edges = len(self.G_val_label[i][0][0])
             edge_list = list(range(num_edges))
             # how many edges to test?
             # edge_list = sample(edge_list, 1000)
-            edge_list = edge_list[:500]
+            edge_list = edge_list[:300]
                 
             for n in edge_list:
                 n = int(n)
 
                 flag = random.choice([0,1])
-                src, dst = G_val_label[i][flag].edges()[0][n], G_val_label[i][flag].edges()[1][n]
+                src, dst = G_val_label[i][flag][0][n].to('cuda'), G_val_label[i][flag][1][n].to('cuda')
 
-                sg, _ = dgl.khop_in_subgraph(G_val[i], {'author': (src,dst)}, k=2, store_ids=True)
+                sg, _ = dgl.khop_in_subgraph(G_val[i], {'user': src,'movie':dst}, k=2, store_ids=True)
 
                 input_expl = self._create_explainer_input(sg, embed, src, dst).unsqueeze(0).to('cuda')
 
@@ -217,12 +216,11 @@ class PGExplainer():
 
                 mask = self._sample_graph(sampling_weights, t, bias=self.sample_bias).squeeze().to('cuda')
 
-                # new_mask = self._mask_graph_new(mask, 0.005) 
+                h_m_u = self.model_to_explain[0](sg.to('cuda'),'user',edge_weight=mask)
+                h_m_m = self.model_to_explain[0](sg.to('cuda'),'movie',edge_weight=mask)
 
-                h_m = self.model_to_explain[0](sg.to('cuda'),'author',edge_weight=mask)
-
-                src_h = h_m[torch.where(sg.ndata[dgl.NID]['author'] == src)]
-                dst_h = h_m[torch.where(sg.ndata[dgl.NID]['author'] == dst)]
+                src_h = h_m_u[torch.where(sg.ndata[dgl.NID]['user'] == src)]
+                dst_h = h_m_m[torch.where(sg.ndata[dgl.NID]['movie'] == dst)]
 
                 all_h = torch.cat((src_h, dst_h),dim=1).to('cuda')
                 pred = self.model_to_explain[1].fc2(F.relu(self.model_to_explain[1].fc1(all_h)))
@@ -231,10 +229,7 @@ class PGExplainer():
                     cce_loss = F.binary_cross_entropy_with_logits(pred.squeeze(),target2[n])
                 else:
                     cce_loss = F.binary_cross_entropy_with_logits(pred.squeeze(),target2[n+num_edges])
-                # size_loss = torch.sum(mask) * size_reg + torch.sum(mask) * size_reg
-                # mask_ent_reg1 = -mask * torch.log(mask) - (1 - mask) * torch.log(1 - mask)
-                # mask_ent_reg2 = -dst_mask * torch.log(dst_mask) - (1 - dst_mask) * torch.log(1 - dst_mask)
-                # mask_ent_loss = entropy_reg * torch.mean(mask_ent_reg1)# + entropy_reg * torch.mean(mask_ent_reg2)
+
                 loss_ = cce_loss.item() # + size_loss + mask_ent_loss
 
                 loss += loss_      
@@ -273,12 +268,12 @@ class PGExplainer():
 
         model_out_path = '/home/jiazhengli/xdgnn/HTGNN/output/explainer_ml'
         # early_stopping
-        early_stopping = EarlyStopping(patience=20, verbose=True, path=f'{model_out_path}/checkpoint_ml_es.pt')
+        early_stopping = EarlyStopping(patience=10, verbose=True, path=f'{model_out_path}/checkpoint_ml_es.pt')
 
         size_reg = self.reg_coefs[0]
         entropy_reg = self.reg_coefs[1]
 
-        rate_list = [0.001,0.003,0.005,0.01,0.03,0.05]
+        rate_list = [0.003,0.005,0.01,0.03,0.05,0.1]
 
         # Start training loop
         for e in tqdm(range(0, self.epochs)):
@@ -300,6 +295,9 @@ class PGExplainer():
 
                 pos_score, neg_score = self.model_to_explain[1](h_u, h_m, pos_u, pos_m, neg_u, neg_m)
 
+                # auc, ap = compute_metric(pos_score, neg_score)
+                # print(auc, ap)
+
                 ori_pred = torch.cat((pos_score.squeeze(1), neg_score.squeeze(1)))
                 target = torch.sigmoid(ori_pred).detach()
 
@@ -308,7 +306,6 @@ class PGExplainer():
                 for ntype in self.G_train[i].ntypes:
                     embed[ntype] = self.model_to_explain[0](self.G_train[i].to('cuda'), ntype).detach()
 
-                
                 num = len(self.G_train_label[i][0][0])
                 # batchs = num // 32
                 # start = random.choice(list(range(batchs-5)))
@@ -318,7 +315,7 @@ class PGExplainer():
                 all_mloss = 0
                 all_sloss = 0
 
-                # change here
+                # TODO change here
                 for j in range(0, 10):
                 # for j in range(start, start + 5):
                     optimizer.zero_grad()
@@ -328,11 +325,11 @@ class PGExplainer():
                     mloss = 0
                     sloss = 0
 
-                    lo = 16*j
+                    lo = 8*j
                     # hi = min(16*(j+1),self.G_train_label[i][0].num_edges())
-                    hi = 16*(j+1)
+                    hi = 8*(j+1)
                     # print(lo,hi)
-                    for n in range(lo, hi):
+                    for n in range(lo, hi):  # 0-8,8-16,...
                         n = int(n)
                         # print(n)
                         flag = random.choice([0,1])
@@ -395,23 +392,24 @@ class PGExplainer():
 
             torch.cuda.empty_cache()
         
-            # if e>50:
-            #     eval_loss = self.evaluate(self.explainer_model, self.G_val, self.G_val_label, t)
-            #     early_stopping(eval_loss, self.explainer_model)
-            #     if early_stopping.early_stop:
-            #         print("Early stopping", e)
-            #         break
+            # if e >1:
+            #     torch.save(self.explainer_model.state_dict(), f'{model_out_path}/checkpoint_ml_es.pt')
+            #     break
+            if e>50:
+                eval_loss = self.evaluate(self.explainer_model, self.G_val, self.G_val_label, t)
+                early_stopping(eval_loss, self.explainer_model)
+                if early_stopping.early_stop:
+                    print("Early stopping", e)
+                    break
 
-            if (e+1) / 10 == 0:
-                torch.save(self.explainer_model.state_dict(), f'{model_out_path}/checkpoint_ml_es.pt')
+            # if (e+1) % 10 == 0:
+            #     torch.save(self.explainer_model.state_dict(), f'{model_out_path}/checkpoint_ml_es.pt')
             
-            # if (e+1) % 5 == 0:
-
 
         # testing
         # t = temp_schedule(e)
 
-        # self.explainer_model.load_state_dict(torch.load(f'{model_out_path}/checkpoint_ml_es.pt'))
+        self.explainer_model.load_state_dict(torch.load(f'{model_out_path}/checkpoint_ml_es.pt'))
         self.explainer_model.eval()
         # self.het_emb.eval()
         all_pred = []
@@ -502,7 +500,7 @@ class PGExplainer():
             preds = all_pred[j::len(rate_list)]
             auc = roc_auc_score(target_list, preds)
             ap = average_precision_score(target_list, preds)
-            writer.add_scalar(f'loss/auc_{rate_list[j]}', auc, e)
-            writer.add_scalar(f'loss/ap_{rate_list[j]}', ap, e)
+            # writer.add_scalar(f'loss/auc_{rate_list[j]}', auc, e)
+            # writer.add_scalar(f'loss/ap_{rate_list[j]}', ap, e)
             print('auc',auc)
             print('ap',ap)

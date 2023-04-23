@@ -199,8 +199,15 @@ def load_ML_data(time_window, device):
     labels = []
     window = 8
 
-    user_feat = torch.randn((943,64)).to(device)
-    movie_feat = torch.randn((1682,64)).to(device)
+    node_feat = torch.load('data/Movielens/node_feat.pt')
+    # user_feat = np.loadtxt('data/Movielens/user_feat')
+    # user_feat = torch.from_numpy(user_feat).to(device)
+    # movie_feat = np.loadtxt('data/Movielens/movie_feat')
+    # movie_feat = torch.from_numpy(movie_feat).to(device)
+    # user_feat = torch.randn((943,64)).to(device)
+    # movie_feat = torch.randn((1682,64)).to(device)
+
+    # print(user_feat)
 
     for i in range(len(times)-window):
         ts = times[i:i+window]
@@ -217,8 +224,8 @@ def load_ML_data(time_window, device):
             graph_data[(srctype,a +'_'+ b[0] + str(int(b[1:])-ts[0]),dsttype)] = (src, dst)
         sg_new = dgl.heterograph(graph_data).to(device)
 
-        for t in range(window):
-            sg_new.ndata[f't{t}'] = {'user': user_feat[sg_new.nodes('user')] ,'movie': movie_feat[sg_new.nodes('movie')]}
+        for t in range(len(ts)):
+            sg_new.ndata[f't{t}'] = {'user': node_feat[t]['user'].to(device) ,'movie': node_feat[t]['movie'].to(device)}
 
         subgraphs.append(sg_new)
         label_t = np.max(ts) + 1

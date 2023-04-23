@@ -8,9 +8,7 @@ import numpy as np
 # import tensorboard
 
 from model.model_gcn import HTGNN, LinkPredictor_ml
-from utils.pytorchtools import EarlyStopping
-from utils.utils import compute_metric, compute_loss
-from utils.data import load_MAG_data, load_ML_data
+from utils.data import load_ML_data
 
 dgl.seed(0)
 np.random.seed(0)
@@ -26,10 +24,10 @@ train_feats, train_labels, val_feats, val_labels, test_feats, test_labels = load
 
 graph_atom = test_feats[0]
 model_out_path = 'output/ML'
-htgnn = HTGNN(graph=graph_atom, n_inp=64, n_hid=32, n_layers=2, n_heads=1, time_window=time_window, norm=True, device=device)
+htgnn = HTGNN(graph=graph_atom, n_inp=384, n_hid=32, n_layers=2, n_heads=1, time_window=time_window, norm=True, device=device)
 predictor = LinkPredictor_ml(n_inp=32, n_classes=1)
 model = nn.Sequential(htgnn, predictor).to(device)
-model.load_state_dict(torch.load('/home/jiazhengli/xdgnn/HTGNN/output/ML/checkpoint_HTGNN_0.pt'))
+model.load_state_dict(torch.load('/home/jiazhengli/xdgnn/HTGNN/output/ML/checkpoint_HTGNN_0_onehot.pt'))
 
 
 explainer = PGExplainer(model_to_explain = model, G_train = train_feats, G_train_label = train_labels, 

@@ -9,7 +9,7 @@ import numpy as np
 from model.model_gcn import HTGNN, LinkPredictor_ml
 from utils.pytorchtools import EarlyStopping
 from utils.utils import compute_metric, compute_loss
-from utils.data import load_MAG_data, load_ML_data
+from utils.data import load_ML_data
 
 dgl.seed(0)
 torch.manual_seed(0)
@@ -54,7 +54,7 @@ model_out_path = 'output/ML'
 auc_list, ap_list = [], []
 
 for k in range(1):
-    htgnn = HTGNN(graph=graph_atom, n_inp=64, n_hid=32, n_layers=2, n_heads=1, time_window=time_window, norm=True, device=device)
+    htgnn = HTGNN(graph=graph_atom, n_inp=384, n_hid=32, n_layers=2, n_heads=1, time_window=time_window, norm=True, device=device)
     predictor = LinkPredictor_ml(n_inp=32, n_classes=1)
     model = nn.Sequential(htgnn, predictor).to(device)
 
@@ -62,7 +62,7 @@ for k in range(1):
     print(f'# params: {sum(p.numel() for p in model.parameters() if p.requires_grad)}')
     optim = torch.optim.Adam(model.parameters(), lr=1e-3, weight_decay=5e-4)
 
-    early_stopping = EarlyStopping(patience=30, verbose=True, path=f'{model_out_path}/checkpoint_HTGNN_{k}.pt')
+    early_stopping = EarlyStopping(patience=30, verbose=True, path=f'{model_out_path}/checkpoint_HTGNN_{k}_onehot.pt')
     for epoch in range(500):
         model.train()
         for (G_feat, (pos_label, neg_label)) in zip(train_feats, train_labels):
@@ -101,7 +101,7 @@ for k in range(1):
             print("Early stopping")
             break
 
-    model.load_state_dict(torch.load(f'{model_out_path}/checkpoint_HTGNN_{k}.pt'))
+    model.load_state_dict(torch.load(f'{model_out_path}/checkpoint_HTGNN_{k}_onehot.pt'))
     auc, ap, test_loss = evaluate(model, test_feats, test_labels)
 
     print(f'auc: {auc}, ap: {ap}')

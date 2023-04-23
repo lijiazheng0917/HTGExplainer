@@ -171,34 +171,6 @@ class PGExplainer():
 
         return cce_loss + mask_ent_loss + size_loss, cce_loss, mask_ent_loss, size_loss
 
-    # def _mask_graph(self, sg, mask):
-    #     l = {}
-    #     k = 0
-    #     for srctype, etype, dsttype in sg.canonical_etypes:
-    #         src, dst = sg.edges(etype=etype)
-    #         # len(src)
-    #         for j in range(k,k+len(src)):
-    #             l[j] = [etype,j-k,src[j-k],dst[j-k]]
-    #         k += len(src)
-
-    #     _, idx = torch.sort(mask,descending=True)
-    #     top_idx = idx[:int(0.1*len(idx))]
-
-    #     masked_sg = sg
-
-    #     for srctype, etype, dsttype in sg.canonical_etypes:
-    #         eids = sg.edges(form='eid',etype=etype)
-    #         masked_sg = dgl.remove_edges(masked_sg,eids,etype)
-
-    #     # c = {type:0 for type in sg.etypes}
-
-    #     for i in range(len(top_idx)):
-    #         type = l[top_idx[i].item()][0]
-    #         src = l[top_idx[i].item()][2]
-    #         dst = l[top_idx[i].item()][3]
-    #         masked_sg.add_edges(src,dst,etype=type)
-
-    #     return masked_sg
     
     def _mask_graph_new(self, mask, rate):
         
