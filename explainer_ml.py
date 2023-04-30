@@ -7,14 +7,14 @@ import torch.nn.functional as F
 import numpy as np
 # import tensorboard
 
-from model.model_gcn import HTGNN, LinkPredictor_ml
+from model.model_gcn_ml import HTGNN, LinkPredictor_ml
 from utils.data import load_ML_data
 
-dgl.seed(0)
-np.random.seed(0)
-torch.manual_seed(0)
-torch.cuda.manual_seed(0)
-torch.cuda.manual_seed_all(0)
+dgl.seed(42)
+np.random.seed(42)
+torch.manual_seed(42)
+torch.cuda.manual_seed(42)
+torch.cuda.manual_seed_all(42)
 from model.myPGExplainer_ml import PGExplainer
 
 device = torch.device('cuda')

@@ -283,6 +283,8 @@ class PGExplainer():
         # Start training loop
         for e in tqdm(range(0, self.epochs)):
 
+            break
+
             self.explainer_model.train()
             t = temp_schedule(e)
             epoch_loss = 0
@@ -356,7 +358,7 @@ class PGExplainer():
                         else:
                             cce_loss = F.binary_cross_entropy_with_logits(pred.squeeze(),target[n+num])
 
-                        size_loss = torch.sum(mask) * size_reg + torch.sum(mask) * size_reg
+                        size_loss = torch.sum(mask) * size_reg
                         mask_ent_reg1 = -mask * torch.log(mask) - (1 - mask) * torch.log(1 - mask)
                         mask_ent_loss = entropy_reg * torch.mean(mask_ent_reg1)# + entropy_reg * torch.mean(mask_ent_reg2)
                         loss_ = cce_loss + size_loss + mask_ent_loss
@@ -441,7 +443,11 @@ class PGExplainer():
 
                 sampling_weights = self.explainer_model(input_expl)
 
-                mask = self._sample_graph(sampling_weights, t, bias=self.sample_bias).squeeze().to('cuda')
+                mask = self._sample_graph(sampling_weights, bias=self.sample_bias, training=False).squeeze().to('cuda')
+                # print(mask.shape)
+                # print(torch.mean(mask))
+                # print(torch.max(mask))
+                # print(torch.min(mask))
 
                 for rate in rate_list:
 
@@ -469,7 +475,7 @@ class PGExplainer():
 
                 sampling_weights = self.explainer_model(input_expl)
 
-                mask = self._sample_graph(sampling_weights, t, bias=self.sample_bias).squeeze().to('cuda')
+                mask = self._sample_graph(sampling_weights, bias=self.sample_bias, training=False).squeeze().to('cuda')
 
                 for rate in rate_list:
 

@@ -6,7 +6,7 @@ import torch.nn as nn
 import torch.nn.functional as F
 import numpy as np
 
-from model.model_gcn import HTGNN, LinkPredictor_ml
+from model.model_gcn_ml import HTGNN, LinkPredictor_ml
 from utils.pytorchtools import EarlyStopping
 from utils.utils import compute_metric, compute_loss
 from utils.data import load_ML_data
@@ -27,8 +27,11 @@ def evaluate(model, val_feats, val_labels):
             # pos_label = pos_label.to(device)
             # neg_label = neg_label.to(device)
 
-            h_u = model[0](G_feat, 'user')
-            h_m = model[0](G_feat, 'movie')
+            feat = model[0](G_feat)
+            h_u, h_m = feat['user'], feat['movie']
+
+            # h_u = model[0](G_feat, 'user')
+            # h_m = model[0](G_feat, 'movie')
 
             pos_u, pos_m = pos_label[0], pos_label[1]
             neg_u, neg_m = neg_label[0], neg_label[1]
@@ -73,9 +76,11 @@ for k in range(1):
             # neg_label = neg_label.to(device)
 
             # print(G_feat)
+            feat = model[0](G_feat)
+            h_u, h_m = feat['user'], feat['movie']
 
-            h_u = model[0](G_feat, 'user')
-            h_m = model[0](G_feat, 'movie')
+            # h_u = model[0](G_feat, 'user')
+            # h_m = model[0](G_feat, 'movie')
             # h_u = torch.ones((944,32),device='cuda')
             # h_m = torch.ones((1683,32),device='cuda')
 

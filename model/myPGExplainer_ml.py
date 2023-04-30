@@ -1,6 +1,6 @@
 import torch
 from torch import nn
-from torch.optim import Adam
+from torch.optim import Adam, AdamW
 from tqdm import tqdm
 import dgl
 import torch.nn.functional as F
@@ -12,7 +12,7 @@ from utils.pytorchtools import EarlyStopping
 from utils.utils import compute_metric
 
 from torch.utils.tensorboard import SummaryWriter 
-writer = SummaryWriter('/home/jiazhengli/xdgnn/HTGNN/output/ml_es_pg')
+writer = SummaryWriter('/home/jiazhengli/xdgnn/HTGNN/output/ml_k1')
 
 class PGExplainer():
     """
@@ -34,7 +34,7 @@ class PGExplainer():
     :function train: train the explainer
     :function explain: search for the subgraph which contributes most to the clasification decision of the model-to-be-explained.
     """
-    def __init__(self, model_to_explain, G_train, G_train_label, G_val, G_val_label, G_test, G_test_label, time_win, epochs=100, lr=0.0005, temp=(5.0, 2.0), reg_coefs=(0.0001, 0.01),sample_bias=0):
+    def __init__(self, model_to_explain, G_train, G_train_label, G_val, G_val_label, G_test, G_test_label, time_win, epochs=300, lr=5e-4, temp=(5.0, 2.0), reg_coefs=(1e-4, 1e-2),sample_bias=0):
         super().__init__()
 
         self.model_to_explain = model_to_explain
@@ -53,7 +53,7 @@ class PGExplainer():
         self.sample_bias = sample_bias
         self.node_emb = 8
 
-        self.expl_embedding = 32+32+32+32 +32+4
+        self.expl_embedding = 32+32+32+32# +32+4
 
     def create_1d_absolute_sin_cos_embedding(self, pos_len, dim):
         assert dim % 2 == 0, "wrong dimension!"
@@ -112,11 +112,16 @@ class PGExplainer():
             nemb1 = F.normalize(nemb1,dim=1)
             nemb2 = F.normalize(nemb2,dim=1)
 
+            # print(srctype, etype, dsttype)
+            # print(srcemb)
+            # print(dstemb)
+            # print(nemb1)
+            # print(nemb2)
             # with none
-            # eemb = torch.cat([srcemb,dstemb,nemb1,nemb2],dim=1)
+            eemb = torch.cat([srcemb,dstemb,nemb1,nemb2],dim=1)
             # with all
-            eemb = torch.cat([srcemb,dstemb,posemb,hetemb,nemb1,nemb2],dim=1)
-
+            # eemb = torch.cat([srcemb,dstemb,posemb,hetemb,nemb1,nemb2],dim=1)
+            # break
             allemb = torch.cat([allemb,eemb],dim=0)
 
         return allemb
@@ -180,12 +185,13 @@ class PGExplainer():
         explainer_model.eval()
         loss = 0
         for i in range(len(G_val)):
-            embed = {}
-            for ntype in G_val[i].ntypes:
-                embed[ntype] = self.model_to_explain[0](G_val[i].to('cuda'), ntype).detach()
 
-            h_u = self.model_to_explain[0](self.G_val[i].to('cuda'), 'user')
-            h_m = self.model_to_explain[0](self.G_val[i].to('cuda'), 'movie')
+            feat = self.model_to_explain[0](self.G_val[i].to('cuda'))
+            h_u, h_m = feat['user'], feat['movie']
+
+            embed = feat
+            embed['user'] = embed['user'].detach()
+            embed['movie'] = embed['movie'].detach()
 
             pos_u, pos_m = self.G_val_label[i][0][0], self.G_val_label[i][0][1]
             neg_u, neg_m = self.G_val_label[i][1][0], self.G_val_label[i][1][1]
@@ -200,7 +206,7 @@ class PGExplainer():
             edge_list = list(range(num_edges))
             # how many edges to test?
             # edge_list = sample(edge_list, 1000)
-            edge_list = edge_list[:300]
+            edge_list = edge_list[:500]
                 
             for n in edge_list:
                 n = int(n)
@@ -208,7 +214,7 @@ class PGExplainer():
                 flag = random.choice([0,1])
                 src, dst = G_val_label[i][flag][0][n].to('cuda'), G_val_label[i][flag][1][n].to('cuda')
 
-                sg, _ = dgl.khop_in_subgraph(G_val[i], {'user': src,'movie':dst}, k=2, store_ids=True)
+                sg, _ = dgl.khop_in_subgraph(G_val[i], {'user': src,'movie':dst}, k=1, store_ids=True)
 
                 input_expl = self._create_explainer_input(sg, embed, src, dst).unsqueeze(0).to('cuda')
 
@@ -216,8 +222,8 @@ class PGExplainer():
 
                 mask = self._sample_graph(sampling_weights, t, bias=self.sample_bias).squeeze().to('cuda')
 
-                h_m_u = self.model_to_explain[0](sg.to('cuda'),'user',edge_weight=mask)
-                h_m_m = self.model_to_explain[0](sg.to('cuda'),'movie',edge_weight=mask)
+                h_m = self.model_to_explain[0](sg.to('cuda'),edge_weight=mask)
+                h_m_u, h_m_m = h_m['user'], h_m['movie']
 
                 src_h = h_m_u[torch.where(sg.ndata[dgl.NID]['user'] == src)]
                 dst_h = h_m_m[torch.where(sg.ndata[dgl.NID]['movie'] == dst)]
@@ -243,10 +249,12 @@ class PGExplainer():
         """
         # Creation of the explainer_model is done here to make sure that the seed is set
         self.explainer_model = nn.Sequential(
-            nn.Linear(self.expl_embedding, 64),
-            nn.ReLU(),
+            nn.Linear(self.expl_embedding, 128),
+            nn.ELU(),
+            nn.Linear(128, 64),
+            nn.ELU(),
             nn.Linear(64, 16),
-            nn.ReLU(),
+            nn.ELU(),
             nn.Linear(16,1)
         )
         # self.het_emb = nn.Embedding(7,32)
@@ -263,20 +271,24 @@ class PGExplainer():
 
         # Create optimizer and temperature schedule
         # optimizer = Adam([*self.explainer_model.parameters(),*self.het_emb.parameters()], lr=self.lr, weight_decay=1e-4)
-        optimizer = Adam(self.explainer_model.parameters(), lr=self.lr, weight_decay=1e-4)
+        optimizer = AdamW(self.explainer_model.parameters(), lr=self.lr)
         temp_schedule = lambda e: self.temp[0]*((self.temp[1]/self.temp[0])**(e/self.epochs))
 
         model_out_path = '/home/jiazhengli/xdgnn/HTGNN/output/explainer_ml'
         # early_stopping
-        early_stopping = EarlyStopping(patience=10, verbose=True, path=f'{model_out_path}/checkpoint_ml_es.pt')
+        early_stopping = EarlyStopping(patience=30, verbose=True, path=f'{model_out_path}/checkpoint_ml_pg_k1.pt')
 
         size_reg = self.reg_coefs[0]
         entropy_reg = self.reg_coefs[1]
 
-        rate_list = [0.003,0.005,0.01,0.03,0.05,0.1]
+        rate_list = [0.01,0.03,0.05,0.1,0.3,0.5]
+        # rate_list = [0.003,0.005,0.01,0.03,0.05,0.1]
+
 
         # Start training loop
         for e in tqdm(range(0, self.epochs)):
+
+            # break
 
             self.explainer_model.train()
             t = temp_schedule(e)
@@ -286,9 +298,10 @@ class PGExplainer():
             epoch_sloss = 0
 
             for i in range(len(self.G_train)):
+            # for i in range(1):
 
-                h_u = self.model_to_explain[0](self.G_train[i].to('cuda'), 'user')
-                h_m = self.model_to_explain[0](self.G_train[i].to('cuda'), 'movie')
+                feat = self.model_to_explain[0](self.G_train[i].to('cuda'))
+                h_u, h_m = feat['user'], feat['movie']
 
                 pos_u, pos_m = self.G_train_label[i][0][0], self.G_train_label[i][0][1]
                 neg_u, neg_m = self.G_train_label[i][1][0], self.G_train_label[i][1][1]
@@ -301,22 +314,18 @@ class PGExplainer():
                 ori_pred = torch.cat((pos_score.squeeze(1), neg_score.squeeze(1)))
                 target = torch.sigmoid(ori_pred).detach()
 
-                embed = {}
-                # If we are explaining a graph, we can determine the embeddings before we run
-                for ntype in self.G_train[i].ntypes:
-                    embed[ntype] = self.model_to_explain[0](self.G_train[i].to('cuda'), ntype).detach()
+                embed = feat
+                embed['user'] = embed['user'].detach()
+                embed['movie'] = embed['movie'].detach()
 
                 num = len(self.G_train_label[i][0][0])
-                # batchs = num // 32
-                # start = random.choice(list(range(batchs-5)))
-                # batchs = 3
                 all_loss = 0
                 all_closs = 0
                 all_mloss = 0
                 all_sloss = 0
 
                 # TODO change here
-                for j in range(0, 10):
+                for j in range(5):
                 # for j in range(start, start + 5):
                     optimizer.zero_grad()
                     # loss = torch.FloatTensor([0]).detach().to('cuda')
@@ -325,18 +334,23 @@ class PGExplainer():
                     mloss = 0
                     sloss = 0
 
-                    lo = 8*j
+                    lo = 16*j
                     # hi = min(16*(j+1),self.G_train_label[i][0].num_edges())
-                    hi = 8*(j+1)
+                    hi = 16*(j+1)
                     # print(lo,hi)
-                    for n in range(lo, hi):  # 0-8,8-16,...
+                    training_list = sample(list(range(num)),32)
+                    # for n in training_list:  # 0-8,8-16,...
+                    for n in training_list:
                         n = int(n)
                         # print(n)
                         flag = random.choice([0,1])
+                        # flag = 0
 
                         src, dst = self.G_train_label[i][flag][0][n].to('cuda'), self.G_train_label[i][flag][1][n].to('cuda')
 
-                        sg, _ = dgl.khop_in_subgraph(self.G_train[i], {'user': src,'movie':dst}, k=2, store_ids=True)
+                        # print(i,n,src,dst)
+
+                        sg, _ = dgl.khop_in_subgraph(self.G_train[i], {'user': src,'movie':dst}, k=1, store_ids=True)
 
                         input_expl = self._create_explainer_input(sg, embed, src, dst).unsqueeze(0).to('cuda')
 
@@ -344,8 +358,8 @@ class PGExplainer():
 
                         mask = self._sample_graph(sampling_weights, t, bias=self.sample_bias).squeeze().to('cuda')
 
-                        h_m_u = self.model_to_explain[0](sg.to('cuda'),'user',edge_weight=mask)
-                        h_m_m = self.model_to_explain[0](sg.to('cuda'),'movie',edge_weight=mask)
+                        h_m = self.model_to_explain[0](sg.to('cuda'),edge_weight=mask)
+                        h_m_u, h_m_m = h_m['user'], h_m['movie']
 
                         src_h = h_m_u[torch.where(sg.ndata[dgl.NID]['user'] == src)]
                         dst_h = h_m_m[torch.where(sg.ndata[dgl.NID]['movie'] == dst)]
@@ -358,22 +372,20 @@ class PGExplainer():
                         else:
                             cce_loss = F.binary_cross_entropy_with_logits(pred.squeeze(),target[n+num])
 
-                        size_loss = torch.sum(mask) * size_reg + torch.sum(mask) * size_reg
+                        size_loss = torch.sum(mask) * size_reg
                         mask_ent_reg1 = -mask * torch.log(mask) - (1 - mask) * torch.log(1 - mask)
                         mask_ent_loss = entropy_reg * torch.mean(mask_ent_reg1)# + entropy_reg * torch.mean(mask_ent_reg2)
                         loss_ = cce_loss + size_loss + mask_ent_loss
                         
-                        
                         loss += loss_
                         closs += cce_loss.item()
                         sloss += size_loss.item()
-                        mloss += mask_ent_loss.item()
+                        mloss += mask_ent_loss.item() 
 
-                    # print("1:{}".format(torch.cuda.memory_allocated(0)))
                     loss.backward()
+                    # TODO try this
+                    # torch.nn.utils.clip_grad_value_(self.explainer_model.parameters(), clip_value=2.0)
                     optimizer.step()
-
-                # print(":{}".format(torch.cuda.memory_allocated(0)))
 
                     all_loss += loss.item()
                     all_closs += closs
@@ -384,7 +396,7 @@ class PGExplainer():
                 epoch_closs += all_closs
                 epoch_mloss += all_mloss
                 epoch_sloss += all_sloss
-
+            # print(epoch_closs)
             writer.add_scalar('loss/all_loss', epoch_loss, e)
             writer.add_scalar('loss/closs', epoch_closs, e)
             writer.add_scalar('loss/mloss', epoch_mloss, e)
@@ -401,26 +413,23 @@ class PGExplainer():
                 if early_stopping.early_stop:
                     print("Early stopping", e)
                     break
-
-            # if (e+1) % 10 == 0:
-            #     torch.save(self.explainer_model.state_dict(), f'{model_out_path}/checkpoint_ml_es.pt')
+            # if e % 10 ==0:
+            #     torch.save(self.explainer_model.state_dict(), f'{model_out_path}/checkpoint_ml_our2.pt')
             
-
         # testing
-        # t = temp_schedule(e)
 
-        self.explainer_model.load_state_dict(torch.load(f'{model_out_path}/checkpoint_ml_es.pt'))
+        self.explainer_model.load_state_dict(torch.load(f'{model_out_path}/checkpoint_ml_pg_k1.pt'))
         self.explainer_model.eval()
         # self.het_emb.eval()
         all_pred = []
         target_list = []
         for i in range(len(self.G_test)):
-            embed = {}
-            for ntype in self.G_test[i].ntypes:
-                embed[ntype] = self.model_to_explain[0](self.G_test[i].to('cuda'), ntype).detach()
+            feat = self.model_to_explain[0](self.G_test[i].to('cuda'))
+            embed = feat
+            embed['user'] = embed['user'].detach()
+            embed['movie'] = embed['movie'].detach()
 
-            h_u = self.model_to_explain[0](self.G_test[i].to('cuda'), 'user')
-            h_m = self.model_to_explain[0](self.G_test[i].to('cuda'), 'movie')
+            h_u, h_m = feat['user'], feat['movie']
 
             pos_u, pos_m = self.G_test_label[i][0][0], self.G_test_label[i][0][1]
             neg_u, neg_m = self.G_test_label[i][1][0], self.G_test_label[i][1][1]
@@ -434,7 +443,7 @@ class PGExplainer():
             edge_list = list(range(num_edges))
             # how many edges to test?
             # edge_list = sample(edge_list, 1000)
-            edge_list = edge_list[:500]
+            edge_list = edge_list[:1000]
  
             for n in edge_list:
                 n = int(n)
@@ -443,20 +452,21 @@ class PGExplainer():
 
                 src, dst = self.G_test_label[i][0][0][n].to('cuda'), self.G_test_label[i][0][1][n].to('cuda')
 
-                sg, _ = dgl.khop_in_subgraph(self.G_test[i], {'user': src,'movie':dst}, k=2, store_ids=True)
+                sg, _ = dgl.khop_in_subgraph(self.G_test[i], {'user': src,'movie':dst}, k=1, store_ids=True)
 
                 input_expl = self._create_explainer_input(sg, embed, src, dst).unsqueeze(0).to('cuda')
 
                 sampling_weights = self.explainer_model(input_expl)
 
-                mask = self._sample_graph(sampling_weights, t, bias=self.sample_bias).squeeze().to('cuda')
+                mask = self._sample_graph(sampling_weights, bias=self.sample_bias, training=False).squeeze().to('cuda')
+ 
 
                 for rate in rate_list:
 
                     new_mask = self._mask_graph_new(mask, rate) 
 
-                    h_m_u = self.model_to_explain[0](sg.to('cuda'),'user',edge_weight=new_mask)
-                    h_m_m = self.model_to_explain[0](sg.to('cuda'),'movie',edge_weight=new_mask)
+                    h_m = self.model_to_explain[0](sg.to('cuda'),edge_weight=new_mask)
+                    h_m_u, h_m_m = h_m['user'], h_m['movie']
 
                     src_h = h_m_u[torch.where(sg.ndata[dgl.NID]['user'] == src)]
                     dst_h = h_m_m[torch.where(sg.ndata[dgl.NID]['movie'] == dst)]
@@ -478,14 +488,14 @@ class PGExplainer():
 
                 sampling_weights = self.explainer_model(input_expl)
 
-                mask = self._sample_graph(sampling_weights, t, bias=self.sample_bias).squeeze().to('cuda')
+                mask = self._sample_graph(sampling_weights, bias=self.sample_bias, training=False).squeeze().to('cuda')
 
                 for rate in rate_list:
 
                     new_mask = self._mask_graph_new(mask, rate) 
 
-                    h_m_u = self.model_to_explain[0](sg.to('cuda'),'user',edge_weight=new_mask)
-                    h_m_m = self.model_to_explain[0](sg.to('cuda'),'movie',edge_weight=new_mask)
+                    h_m = self.model_to_explain[0](sg.to('cuda'),edge_weight=new_mask)
+                    h_m_u, h_m_m = h_m['user'], h_m['movie']
 
                     src_h = h_m_u[torch.where(sg.ndata[dgl.NID]['user'] == src)]
                     dst_h = h_m_m[torch.where(sg.ndata[dgl.NID]['movie'] == dst)]
