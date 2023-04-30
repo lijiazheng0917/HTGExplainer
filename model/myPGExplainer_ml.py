@@ -482,7 +482,7 @@ class PGExplainer():
 
                 src, dst = self.G_test_label[i][1][0][n].to('cuda'), self.G_test_label[i][1][1][n].to('cuda')
 
-                sg, _ = dgl.khop_in_subgraph(self.G_test[i], {'user': src,'movie':dst}, k=2, store_ids=True)
+                sg, _ = dgl.khop_in_subgraph(self.G_test[i], {'user': src,'movie':dst}, k=1, store_ids=True)
 
                 input_expl = self._create_explainer_input(sg, embed, src, dst).unsqueeze(0).to('cuda')
 

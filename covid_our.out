@@ -1,0 +1,174 @@
+
+CommandNotFoundError: Your shell has not been properly configured to use 'conda activate'.
+To initialize your shell, run
+
+    $ conda init <SHELL_NAME>
+
+Currently supported shells are:
+  - bash
+  - fish
+  - tcsh
+  - xonsh
+  - zsh
+  - powershell
+
+See 'conda init --help' for more information and options.
+
+IMPORTANT: You may need to close and restart your shell after running 'conda init'.
+
+
+  0%|          | 0/200 [00:00<?, ?it/s]/home/jiazhengli/miniconda3/envs/pt/lib/python3.11/site-packages/dgl/backend/pytorch/tensor.py:445: UserWarning: TypedStorage is deprecated. It will be removed in the future and UntypedStorage will be the only storage class. This should only matter to you if you are using storages directly.  To access UntypedStorage directly, use tensor.untyped_storage() instead of tensor.storage()
+  assert input.numel() == input.storage().size(), (
+  0%|          | 1/200 [03:24<11:19:07, 204.76s/it]  1%|          | 2/200 [06:41<11:00:22, 200.11s/it]  2%|▏         | 3/200 [09:57<10:51:05, 198.30s/it]  2%|▏         | 4/200 [13:07<10:36:26, 194.83s/it]  2%|▎         | 5/200 [16:04<10:12:41, 188.52s/it]  3%|▎         | 6/200 [19:01<9:56:18, 184.43s/it]   4%|▎         | 7/200 [21:56<9:43:55, 181.53s/it]  4%|▍         | 8/200 [24:55<9:38:04, 180.65s/it]  4%|▍         | 9/200 [27:59<9:38:20, 181.68s/it]  5%|▌         | 10/200 [30:59<9:33:27, 181.09s/it](null): log_init(): Unable to open logfile`/var/log/slurm/slurmd.log': No such file or directory
+(null): log_init(): Unable to open logfile`/var/log/slurm/slurmd.log': No such file or directory
+  6%|▌         | 11/200 [34:00<9:30:36, 181.15s/it]  6%|▌         | 12/200 [37:03<9:29:46, 181.84s/it]  6%|▋         | 13/200 [40:09<9:30:03, 182.91s/it]  7%|▋         | 14/200 [43:05<9:21:14, 181.05s/it]  8%|▊         | 15/200 [46:04<9:16:13, 180.40s/it]  8%|▊         | 16/200 [49:06<9:14:50, 180.93s/it]  8%|▊         | 17/200 [52:11<9:14:52, 181.93s/it]  9%|▉         | 18/200 [55:12<9:11:02, 181.66s/it] 10%|▉         | 19/200 [58:12<9:06:17, 181.09s/it] 10%|█         | 20/200 [1:01:12<9:03:02, 181.01s/it] 10%|█         | 21/200 [1:04:13<9:00:04, 181.03s/it] 11%|█         | 22/200 [1:07:19<9:01:14, 182.44s/it] 12%|█▏        | 23/200 [1:10:20<8:56:44, 181.95s/it] 12%|█▏        | 24/200 [1:13:28<8:58:48, 183.69s/it] 12%|█▎        | 25/200 [1:16:28<8:53:07, 182.78s/it] 13%|█▎        | 26/200 [1:19:28<8:47:22, 181.85s/it] 14%|█▎        | 27/200 [1:22:32<8:45:57, 182.41s/it] 14%|█▍        | 28/200 [1:25:37<8:45:07, 183.18s/it] 14%|█▍        | 29/200 [1:28:35<8:37:37, 181.62s/it] 15%|█▌        | 30/200 [1:31:27<8:27:02, 178.95s/it](null): log_init(): Unable to open logfile`/var/log/slurm/slurmd.log': No such file or directory
+(null): log_init(): Unable to open logfile`/var/log/slurm/slurmd.log': No such file or directory
+ 16%|█▌        | 31/200 [1:34:30<8:26:48, 179.93s/it] 16%|█▌        | 32/200 [1:37:28<8:22:19, 179.40s/it] 16%|█▋        | 33/200 [1:40:27<8:19:13, 179.36s/it] 17%|█▋        | 34/200 [1:43:24<8:13:55, 178.53s/it] 18%|█▊        | 35/200 [1:46:13<8:03:20, 175.76s/it] 18%|█▊        | 36/200 [1:49:07<7:59:19, 175.37s/it] 18%|█▊        | 37/200 [1:52:05<7:57:50, 175.89s/it] 19%|█▉        | 38/200 [1:55:05<7:58:35, 177.25s/it] 20%|█▉        | 39/200 [1:58:03<7:55:54, 177.36s/it] 20%|██        | 40/200 [2:01:04<7:55:55, 178.47s/it] 20%|██        | 41/200 [2:04:00<7:51:01, 177.74s/it] 21%|██        | 42/200 [2:06:56<7:46:36, 177.19s/it] 22%|██▏       | 43/200 [2:10:00<7:49:38, 179.48s/it] 22%|██▏       | 44/200 [2:13:01<7:47:49, 179.93s/it] 22%|██▎       | 45/200 [2:16:03<7:46:05, 180.42s/it] 23%|██▎       | 46/200 [2:19:06<7:45:20, 181.30s/it] 24%|██▎       | 47/200 [2:22:35<8:03:30, 189.61s/it] 24%|██▍       | 48/200 [2:25:54<8:07:26, 192.41s/it] 24%|██▍       | 49/200 [2:29:22<8:15:47, 197.00s/it](null): log_init(): Unable to open logfile`/var/log/slurm/slurmd.log': No such file or directory
+(null): log_init(): Unable to open logfile`/var/log/slurm/slurmd.log': No such file or directory
+ 25%|██▌       | 50/200 [2:32:41<8:14:06, 197.65s/it] 26%|██▌       | 51/200 [2:35:56<8:08:52, 196.87s/it] 26%|██▌       | 52/200 [2:39:56<8:37:04, 209.62s/it] 26%|██▋       | 53/200 [2:44:13<9:08:58, 224.07s/it] 27%|██▋       | 54/200 [2:48:19<9:20:39, 230.41s/it] 28%|██▊       | 55/200 [2:52:44<9:42:16, 240.94s/it] 28%|██▊       | 56/200 [2:56:26<9:24:34, 235.24s/it] 28%|██▊       | 57/200 [3:01:02<9:49:24, 247.30s/it] 29%|██▉       | 58/200 [3:06:14<10:31:53, 267.00s/it] 30%|██▉       | 59/200 [3:10:09<10:04:38, 257.29s/it] 30%|███       | 60/200 [3:14:13<9:50:50, 253.22s/it]  30%|███       | 61/200 [3:18:04<9:31:16, 246.59s/it] 31%|███       | 62/200 [3:21:52<9:14:36, 241.14s/it] 32%|███▏      | 63/200 [3:26:30<9:35:34, 252.07s/it] 32%|███▏      | 64/200 [3:31:06<9:47:47, 259.32s/it](null): log_init(): Unable to open logfile`/var/log/slurm/slurmd.log': No such file or directory
+(null): log_init(): Unable to open logfile`/var/log/slurm/slurmd.log': No such file or directory
+ 32%|███▎      | 65/200 [3:34:17<8:56:56, 238.64s/it] 33%|███▎      | 66/200 [3:37:24<8:18:39, 223.28s/it] 34%|███▎      | 67/200 [3:40:33<7:51:51, 212.87s/it] 34%|███▍      | 68/200 [3:43:39<7:30:50, 204.93s/it] 34%|███▍      | 69/200 [3:46:43<7:13:58, 198.77s/it] 35%|███▌      | 70/200 [3:49:46<7:00:16, 193.98s/it] 36%|███▌      | 71/200 [3:52:53<6:52:25, 191.83s/it] 36%|███▌      | 72/200 [3:56:16<6:56:31, 195.24s/it] 36%|███▋      | 73/200 [4:00:02<7:12:28, 204.32s/it] 37%|███▋      | 74/200 [4:04:04<7:33:03, 215.74s/it] 38%|███▊      | 75/200 [4:08:06<7:45:32, 223.46s/it] 38%|███▊      | 76/200 [4:12:02<7:49:42, 227.28s/it] 38%|███▊      | 77/200 [4:15:45<7:43:43, 226.20s/it] 39%|███▉      | 78/200 [4:19:20<7:33:05, 222.83s/it] 40%|███▉      | 79/200 [4:23:09<7:33:02, 224.65s/it] 40%|████      | 80/200 [4:26:57<7:31:13, 225.61s/it] 40%|████      | 81/200 [4:31:04<7:40:11, 232.03s/it](null): log_init(): Unable to open logfile`/var/log/slurm/slurmd.log': No such file or directory
+(null): log_init(): Unable to open logfile`/var/log/slurm/slurmd.log': No such file or directory
+ 41%|████      | 82/200 [4:34:52<7:33:48, 230.75s/it] 42%|████▏     | 83/200 [4:38:54<7:36:50, 234.27s/it] 42%|████▏     | 84/200 [4:43:03<7:41:06, 238.51s/it] 42%|████▎     | 85/200 [4:47:14<7:44:09, 242.17s/it] 43%|████▎     | 86/200 [4:51:20<7:42:36, 243.48s/it] 44%|████▎     | 87/200 [4:55:30<7:42:15, 245.45s/it] 44%|████▍     | 88/200 [4:59:31<7:35:29, 244.01s/it] 44%|████▍     | 89/200 [5:03:14<7:20:08, 237.92s/it] 45%|████▌     | 90/200 [5:07:02<7:10:28, 234.81s/it] 46%|████▌     | 91/200 [5:10:56<7:06:04, 234.53s/it] 46%|████▌     | 92/200 [5:14:54<7:04:09, 235.65s/it] 46%|████▋     | 93/200 [5:18:15<6:41:24, 225.09s/it] 47%|████▋     | 94/200 [5:21:21<6:17:10, 213.49s/it] 48%|████▊     | 95/200 [5:24:33<6:02:20, 207.06s/it] 48%|████▊     | 96/200 [5:27:43<5:50:02, 201.95s/it] 48%|████▊     | 97/200 [5:30:54<5:40:52, 198.57s/it](null): log_init(): Unable to open logfile`/var/log/slurm/slurmd.log': No such file or directory
+(null): log_init(): Unable to open logfile`/var/log/slurm/slurmd.log': No such file or directory
+ 49%|████▉     | 98/200 [5:34:03<5:32:57, 195.86s/it] 50%|████▉     | 99/200 [5:37:13<5:26:29, 193.96s/it] 50%|█████     | 100/200 [5:40:50<5:34:50, 200.90s/it] 50%|█████     | 101/200 [5:44:46<5:49:01, 211.53s/it] 51%|█████     | 102/200 [5:48:50<6:01:10, 221.13s/it] 52%|█████▏    | 103/200 [5:52:55<6:09:03, 228.28s/it] 52%|█████▏    | 104/200 [5:56:45<6:06:10, 228.86s/it] 52%|█████▎    | 105/200 [6:00:42<6:06:15, 231.32s/it] 53%|█████▎    | 106/200 [6:04:06<5:49:42, 223.22s/it] 54%|█████▎    | 107/200 [6:07:32<5:37:48, 217.94s/it] 54%|█████▍    | 108/200 [6:11:06<5:32:10, 216.64s/it] 55%|█████▍    | 109/200 [6:14:37<5:26:16, 215.12s/it] 55%|█████▌    | 110/200 [6:18:08<5:20:41, 213.79s/it] 56%|█████▌    | 111/200 [6:21:43<5:17:42, 214.18s/it] 56%|█████▌    | 112/200 [6:25:22<5:16:05, 215.52s/it] 56%|█████▋    | 113/200 [6:29:11<5:18:38, 219.76s/it](null): log_init(): Unable to open logfile`/var/log/slurm/slurmd.log': No such file or directory
+(null): log_init(): Unable to open logfile`/var/log/slurm/slurmd.log': No such file or directory
+ 57%|█████▋    | 114/200 [6:33:05<5:21:05, 224.02s/it] 57%|█████▊    | 115/200 [6:37:00<5:21:44, 227.11s/it] 58%|█████▊    | 116/200 [6:41:19<5:31:34, 236.84s/it] 58%|█████▊    | 117/200 [6:44:59<5:20:30, 231.70s/it] 59%|█████▉    | 118/200 [6:48:48<5:15:26, 230.81s/it] 60%|█████▉    | 119/200 [6:52:45<5:14:29, 232.96s/it] 60%|██████    | 120/200 [6:56:38<5:10:19, 232.74s/it] 60%|██████    | 121/200 [7:00:25<5:04:24, 231.20s/it] 61%|██████    | 122/200 [7:03:32<4:43:10, 217.82s/it] 62%|██████▏   | 123/200 [7:06:40<4:28:01, 208.85s/it] 62%|██████▏   | 124/200 [7:09:58<4:20:29, 205.65s/it] 62%|██████▎   | 125/200 [7:13:04<4:09:44, 199.79s/it] 63%|██████▎   | 126/200 [7:16:14<4:02:32, 196.66s/it] 64%|██████▎   | 127/200 [7:19:27<3:57:58, 195.59s/it] 64%|██████▍   | 128/200 [7:22:39<3:53:42, 194.76s/it] 64%|██████▍   | 129/200 [7:26:13<3:57:04, 200.35s/it] 65%|██████▌   | 130/200 [7:29:55<4:01:27, 206.96s/it](null): log_init(): Unable to open logfile`/var/log/slurm/slurmd.log': No such file or directory
+(null): log_init(): Unable to open logfile`/var/log/slurm/slurmd.log': No such file or directory
+ 66%|██████▌   | 131/200 [7:33:42<4:04:45, 212.83s/it] 66%|██████▌   | 132/200 [7:37:27<4:05:29, 216.61s/it] 66%|██████▋   | 133/200 [7:41:09<4:03:45, 218.29s/it] 67%|██████▋   | 134/200 [7:45:02<4:04:50, 222.58s/it] 68%|██████▊   | 135/200 [7:48:53<4:03:56, 225.17s/it] 68%|██████▊   | 136/200 [7:52:41<4:01:07, 226.05s/it] 68%|██████▊   | 137/200 [7:56:29<3:58:00, 226.67s/it] 69%|██████▉   | 138/200 [8:00:27<3:57:29, 229.83s/it] 70%|██████▉   | 139/200 [8:04:17<3:53:47, 229.95s/it] 70%|███████   | 140/200 [8:08:13<3:51:40, 231.68s/it] 70%|███████   | 141/200 [8:11:55<3:44:59, 228.81s/it] 71%|███████   | 142/200 [8:15:40<3:40:14, 227.84s/it] 72%|███████▏  | 143/200 [8:19:37<3:39:04, 230.61s/it] 72%|███████▏  | 144/200 [8:23:40<3:38:32, 234.16s/it] 72%|███████▎  | 145/200 [8:27:27<3:32:38, 231.98s/it] 73%|███████▎  | 146/200 [8:31:33<3:32:43, 236.35s/it](null): log_init(): Unable to open logfile`/var/log/slurm/slurmd.log': No such file or directory
+(null): log_init(): Unable to open logfile`/var/log/slurm/slurmd.log': No such file or directory
+ 74%|███████▎  | 147/200 [8:35:26<3:27:51, 235.30s/it] 74%|███████▍  | 148/200 [8:39:24<3:24:30, 235.97s/it] 74%|███████▍  | 149/200 [8:43:17<3:19:53, 235.16s/it] 75%|███████▌  | 150/200 [8:46:42<3:08:26, 226.13s/it] 76%|███████▌  | 151/200 [8:49:50<2:55:25, 214.80s/it] 76%|███████▌  | 152/200 [8:52:58<2:45:25, 206.79s/it] 76%|███████▋  | 153/200 [8:56:06<2:37:31, 201.10s/it] 77%|███████▋  | 154/200 [8:59:15<2:31:18, 197.35s/it] 78%|███████▊  | 155/200 [9:02:24<2:26:14, 195.00s/it] 78%|███████▊  | 156/200 [9:05:33<2:21:35, 193.07s/it] 78%|███████▊  | 157/200 [9:09:01<2:21:33, 197.52s/it] 79%|███████▉  | 158/200 [9:12:37<2:22:17, 203.26s/it] 80%|███████▉  | 159/200 [9:16:27<2:24:13, 211.06s/it] 80%|████████  | 160/200 [9:20:15<2:24:06, 216.16s/it] 80%|████████  | 161/200 [9:24:23<2:26:42, 225.71s/it] 81%|████████  | 162/200 [9:28:18<2:24:48, 228.65s/it] 82%|████████▏ | 163/200 [9:32:20<2:23:22, 232.50s/it](null): log_init(): Unable to open logfile`/var/log/slurm/slurmd.log': No such file or directory
+(null): log_init(): Unable to open logfile`/var/log/slurm/slurmd.log': No such file or directory
+ 82%|████████▏ | 164/200 [9:36:29<2:22:35, 237.66s/it] 82%|████████▎ | 165/200 [9:40:32<2:19:24, 238.98s/it] 83%|████████▎ | 166/200 [9:44:30<2:15:22, 238.89s/it] 84%|████████▎ | 167/200 [9:48:33<2:11:59, 239.97s/it] 84%|████████▍ | 168/200 [9:52:34<2:08:07, 240.23s/it] 84%|████████▍ | 169/200 [9:56:35<2:04:16, 240.52s/it] 85%|████████▌ | 170/200 [10:00:00<1:54:55, 229.85s/it] 86%|████████▌ | 171/200 [10:03:28<1:47:58, 223.39s/it] 86%|████████▌ | 172/200 [10:07:07<1:43:41, 222.19s/it] 86%|████████▋ | 173/200 [10:11:17<1:43:44, 230.54s/it] 87%|████████▋ | 174/200 [10:14:55<1:38:11, 226.59s/it] 88%|████████▊ | 175/200 [10:18:38<1:33:59, 225.57s/it] 88%|████████▊ | 175/200 [10:22:27<1:28:55, 213.42s/it]
+(null): log_init(): Unable to open logfile`/var/log/slurm/slurmd.log': No such file or directory
+(null): log_init(): Unable to open logfile`/var/log/slurm/slurmd.log': No such file or directory
+Validation loss decreased (inf --> 4233.328125).  Saving model ...
+Validation loss decreased (4233.328125 --> 4043.906738).  Saving model ...
+Validation loss decreased (4043.906738 --> 3816.662109).  Saving model ...
+Validation loss decreased (3816.662109 --> 3758.355469).  Saving model ...
+Validation loss decreased (3758.355469 --> 3576.573730).  Saving model ...
+Validation loss decreased (3576.573730 --> 3486.256348).  Saving model ...
+Validation loss decreased (3486.256348 --> 3327.321045).  Saving model ...
+Validation loss decreased (3327.321045 --> 3284.344971).  Saving model ...
+Validation loss decreased (3284.344971 --> 3167.249512).  Saving model ...
+Validation loss decreased (3167.249512 --> 2783.541748).  Saving model ...
+EarlyStopping counter: 1 out of 20
+Validation loss decreased (2783.541748 --> 2487.349854).  Saving model ...
+Validation loss decreased (2487.349854 --> 2165.125977).  Saving model ...
+EarlyStopping counter: 1 out of 20
+EarlyStopping counter: 2 out of 20
+Validation loss decreased (2165.125977 --> 2097.977539).  Saving model ...
+Validation loss decreased (2097.977539 --> 2075.349609).  Saving model ...
+Validation loss decreased (2075.349609 --> 1839.006836).  Saving model ...
+Validation loss decreased (1839.006836 --> 1726.757080).  Saving model ...
+Validation loss decreased (1726.757080 --> 1572.786743).  Saving model ...
+Validation loss decreased (1572.786743 --> 1537.207520).  Saving model ...
+Validation loss decreased (1537.207520 --> 1437.395142).  Saving model ...
+Validation loss decreased (1437.395142 --> 1184.560425).  Saving model ...
+Validation loss decreased (1184.560425 --> 1108.768677).  Saving model ...
+Validation loss decreased (1108.768677 --> 1101.881836).  Saving model ...
+Validation loss decreased (1101.881836 --> 1076.312866).  Saving model ...
+Validation loss decreased (1076.312866 --> 946.358276).  Saving model ...
+EarlyStopping counter: 1 out of 20
+EarlyStopping counter: 2 out of 20
+Validation loss decreased (946.358276 --> 938.787476).  Saving model ...
+Validation loss decreased (938.787476 --> 899.072327).  Saving model ...
+Validation loss decreased (899.072327 --> 874.761475).  Saving model ...
+Validation loss decreased (874.761475 --> 849.845093).  Saving model ...
+Validation loss decreased (849.845093 --> 844.070984).  Saving model ...
+EarlyStopping counter: 1 out of 20
+Validation loss decreased (844.070984 --> 776.676025).  Saving model ...
+EarlyStopping counter: 1 out of 20
+EarlyStopping counter: 2 out of 20
+EarlyStopping counter: 3 out of 20
+EarlyStopping counter: 4 out of 20
+EarlyStopping counter: 5 out of 20
+EarlyStopping counter: 6 out of 20
+EarlyStopping counter: 7 out of 20
+EarlyStopping counter: 8 out of 20
+EarlyStopping counter: 9 out of 20
+EarlyStopping counter: 10 out of 20
+EarlyStopping counter: 11 out of 20
+EarlyStopping counter: 12 out of 20
+EarlyStopping counter: 13 out of 20
+EarlyStopping counter: 14 out of 20
+EarlyStopping counter: 15 out of 20
+Validation loss decreased (776.676025 --> 762.413330).  Saving model ...
+Validation loss decreased (762.413330 --> 719.276428).  Saving model ...
+EarlyStopping counter: 1 out of 20
+Validation loss decreased (719.276428 --> 686.674805).  Saving model ...
+EarlyStopping counter: 1 out of 20
+EarlyStopping counter: 2 out of 20
+Validation loss decreased (686.674805 --> 639.744202).  Saving model ...
+Validation loss decreased (639.744202 --> 627.286133).  Saving model ...
+EarlyStopping counter: 1 out of 20
+Validation loss decreased (627.286133 --> 590.665405).  Saving model ...
+EarlyStopping counter: 1 out of 20
+EarlyStopping counter: 2 out of 20
+Validation loss decreased (590.665405 --> 582.142090).  Saving model ...
+Validation loss decreased (582.142090 --> 558.837158).  Saving model ...
+Validation loss decreased (558.837158 --> 548.403931).  Saving model ...
+Validation loss decreased (548.403931 --> 542.690796).  Saving model ...
+Validation loss decreased (542.690796 --> 527.024536).  Saving model ...
+EarlyStopping counter: 1 out of 20
+Validation loss decreased (527.024536 --> 510.086243).  Saving model ...
+EarlyStopping counter: 1 out of 20
+Validation loss decreased (510.086243 --> 506.472992).  Saving model ...
+EarlyStopping counter: 1 out of 20
+EarlyStopping counter: 2 out of 20
+EarlyStopping counter: 3 out of 20
+EarlyStopping counter: 4 out of 20
+EarlyStopping counter: 5 out of 20
+EarlyStopping counter: 6 out of 20
+EarlyStopping counter: 7 out of 20
+EarlyStopping counter: 8 out of 20
+EarlyStopping counter: 9 out of 20
+EarlyStopping counter: 10 out of 20
+EarlyStopping counter: 11 out of 20
+EarlyStopping counter: 12 out of 20
+Validation loss decreased (506.472992 --> 492.869385).  Saving model ...
+Validation loss decreased (492.869385 --> 492.429749).  Saving model ...
+EarlyStopping counter: 1 out of 20
+EarlyStopping counter: 2 out of 20
+Validation loss decreased (492.429749 --> 487.088684).  Saving model ...
+EarlyStopping counter: 1 out of 20
+EarlyStopping counter: 2 out of 20
+Validation loss decreased (487.088684 --> 477.921234).  Saving model ...
+EarlyStopping counter: 1 out of 20
+EarlyStopping counter: 2 out of 20
+Validation loss decreased (477.921234 --> 472.084991).  Saving model ...
+EarlyStopping counter: 1 out of 20
+Validation loss decreased (472.084991 --> 465.107910).  Saving model ...
+Validation loss decreased (465.107910 --> 462.601379).  Saving model ...
+Validation loss decreased (462.601379 --> 451.123779).  Saving model ...
+EarlyStopping counter: 1 out of 20
+Validation loss decreased (451.123779 --> 449.704193).  Saving model ...
+EarlyStopping counter: 1 out of 20
+Validation loss decreased (449.704193 --> 445.573425).  Saving model ...
+Validation loss decreased (445.573425 --> 433.355835).  Saving model ...
+Validation loss decreased (433.355835 --> 334.300659).  Saving model ...
+EarlyStopping counter: 1 out of 20
+EarlyStopping counter: 2 out of 20
+EarlyStopping counter: 3 out of 20
+EarlyStopping counter: 4 out of 20
+EarlyStopping counter: 5 out of 20
+EarlyStopping counter: 6 out of 20
+EarlyStopping counter: 7 out of 20
+EarlyStopping counter: 8 out of 20
+EarlyStopping counter: 9 out of 20
+EarlyStopping counter: 10 out of 20
+EarlyStopping counter: 11 out of 20
+EarlyStopping counter: 12 out of 20
+EarlyStopping counter: 13 out of 20
+EarlyStopping counter: 14 out of 20
+EarlyStopping counter: 15 out of 20
+EarlyStopping counter: 16 out of 20
+EarlyStopping counter: 17 out of 20
+EarlyStopping counter: 18 out of 20
+EarlyStopping counter: 19 out of 20
+EarlyStopping counter: 20 out of 20
+Early stopping 175
+[132.00857965 140.75476467 120.56561002 102.27336118  82.77023044
+  60.47666811]
+[59350.87797391 59234.27691759 47246.65285088 36584.9513101
+ 23920.77319938 13380.57929152]

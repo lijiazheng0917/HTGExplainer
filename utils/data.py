@@ -162,9 +162,9 @@ def load_MAG_data(glist, time_window, device):
     return train_feats, train_labels, val_feats, val_labels, test_feats, test_labels
 
 def load_ML_data(time_window, device):
-    mm = pd.read_csv('/home/jiazhengli/xdgnn/HTGNN/data/Movielens/movie_movie(knn).dat', sep = "\t", header=None,names=['m1', 'm2','score'])
-    uu = pd.read_csv('/home/jiazhengli/xdgnn/HTGNN/data/Movielens/user_user(knn).dat', sep = "\t", header=None,names=['u1', 'u2','score'])
-    um = pd.read_csv('/home/jiazhengli/xdgnn/HTGNN/data/Movielens/user_movie.dat', sep = "\t", header=None,names=['user', 'movie','rating','time'])
+    mm = pd.read_csv('data/Movielens/movie_movie(knn).dat', sep = "\t", header=None,names=['m1', 'm2','score'])
+    uu = pd.read_csv('data/Movielens/user_user(knn).dat', sep = "\t", header=None,names=['u1', 'u2','score'])
+    um = pd.read_csv('data/Movielens/user_movie.dat', sep = "\t", header=None,names=['user', 'movie','rating','time'])
 
     mmi = np.vstack((mm.m1.values,mm.m2.values))
     uui = np.vstack((uu.u1.values,uu.u2.values))
@@ -200,14 +200,6 @@ def load_ML_data(time_window, device):
     window = 8
 
     node_feat = torch.load('data/Movielens/node_feat.pt')
-    # user_feat = np.loadtxt('data/Movielens/user_feat')
-    # user_feat = torch.from_numpy(user_feat).to(device)
-    # movie_feat = np.loadtxt('data/Movielens/movie_feat')
-    # movie_feat = torch.from_numpy(movie_feat).to(device)
-    # user_feat = torch.randn((943,64)).to(device)
-    # movie_feat = torch.randn((1682,64)).to(device)
-
-    # print(user_feat)
 
     for i in range(len(times)-window):
         ts = times[i:i+window]
