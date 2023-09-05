@@ -1,6 +1,13 @@
 data
-output
+output*
 __pycache__
 .history
 mp2vec
 backup
+results*
+covid*
+mag*
+ml*
+record.md
+submit*
+test*
