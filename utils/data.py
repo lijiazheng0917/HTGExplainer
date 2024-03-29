@@ -138,7 +138,7 @@ def construct_htg_label_mag(glist, idx, device):
 def load_MAG_data(glist, time_window, device):
     
     print('loading mp2vec')
-    glist = [mp2vec_feat(f'mp2vec/g{i}.vector', g) for (i, g) in enumerate(glist)]
+    glist = [mp2vec_feat(f'data/mp2vec/g{i}.vector', g) for (i, g) in enumerate(glist)]
 
     train_feats, train_labels = [], []
     val_feats, val_labels     = [], []
