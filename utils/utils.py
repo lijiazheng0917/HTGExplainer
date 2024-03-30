@@ -3,7 +3,7 @@ import torch.nn as nn
 import torch.nn.functional as F
 import numpy as np
 from gensim.models import KeyedVectors
-from sklearn.metrics import roc_auc_score, average_precision_score, accuracy_score, f1_score
+from sklearn.metrics import roc_auc_score, average_precision_score
 
 
 def compute_metric(pos_score, neg_score):
@@ -50,6 +50,7 @@ def mp2vec_feat(path, g):
         g.nodes[ntype].data['feat'] = feat
     
     return g
+
 
 class TimeEncode(nn.Module):
     """

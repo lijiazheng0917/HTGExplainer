@@ -161,7 +161,8 @@ def load_MAG_data(glist, time_window, device):
                 
     return train_feats, train_labels, val_feats, val_labels, test_feats, test_labels
 
-def load_ML_data(time_window, device):
+
+def load_ML_data(device):
     mm = pd.read_csv('data/Movielens/movie_movie(knn).dat', sep = "\t", header=None,names=['m1', 'm2','score'])
     uu = pd.read_csv('data/Movielens/user_user(knn).dat', sep = "\t", header=None,names=['u1', 'u2','score'])
     um = pd.read_csv('data/Movielens/user_movie.dat', sep = "\t", header=None,names=['user', 'movie','rating','time'])
